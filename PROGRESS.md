@@ -12,7 +12,8 @@
 | M5 Video                            | Complete locally; CI not yet run |
 | M6 Web outputs                      | Complete locally; CI not yet run |
 | M7 Config                           | Complete locally; CI not yet run |
-| M8 – M9                             | Not started                      |
+| M8 CI mode                          | Complete locally; CI not yet run |
+| M9 Quality targets & compare        | Not started                      |
 
 ## M0 — what changed
 
@@ -245,10 +246,44 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
 - **Guardrails**: the config file is the one write outside `outDir` (§6.2); `writeConfigFile` in
   `fs-safe.ts` accepts only the known config names in the project root, refuses symlinks and is atomic.
 
+## M8 — what changed
+
+- **`bytecut check`**: the audit with a verdict. Exit **0** passed, **1** a finding of severity `error`
+  remains (`project/over-budget` by default, plus any rule the config promotes), **2** it could not
+  run (bad flags, broken config, no git, bad ref, nothing to scan). CI can tell "fix your images" from
+  "fix your pipeline". It honours the config (rules, budgets, `exclude`, `audit.ignore`) and **writes
+  nothing**: no analysis cache, no manifest; the repository is byte-identical afterwards (tested).
+- **`--fail-on error|warn`** (default `error`): `warn` also fails on warnings, so a zero-config CI job
+  can catch stale outputs and heavy images without writing a config. This goes beyond the milestone
+  text and was confirmed with you.
+- **`--changed [base]`**: report only findings about files that differ from `base` (default `HEAD`,
+  i.e. local changes). Changed means committed since the merge-base, staged, unstaged and untracked
+  but not ignored; deletions are skipped. The audit still covers the whole project, so project-wide
+  rules (total budget, duplicates, unreferenced) stay correct, and findings that name no file always
+  count. A changed bytecut config file puts every file in scope. Git is read locally with argument
+  arrays and never fetches; a missing ref, a non-repository and a shallow clone each say what to do.
+- **`--report md|json`**: the report on stdout instead of the text report; the one-line verdict goes to
+  stderr. Markdown stays under GitHub's comment limit (20 rows per rule, then a stated cutoff) and
+  escapes file names and messages so a table cannot be broken; JSON has a stable shape (`version`,
+  `ok`, `failOn`, `counts`, `changed`, `findings`, `failing`, `scanned`, `totals`, `unprobed`,
+  `notes`). There is deliberately no `--output <file>`: §6.2 allows writes only in `outDir` and the
+  config, so CI redirects stdout.
+- Videos that could not be analysed because ffmpeg is missing are listed in every report instead of
+  passing silently.
+- Example GitHub Actions step (needs history for `--changed`):
+
+  ```yaml
+  - uses: actions/checkout@v4
+    with: { fetch-depth: 0 }
+  - run: npx bytecut check --changed origin/main --fail-on warn --report md > bytecut-report.md
+  ```
+
 ## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
-- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 884 tests in 67 files
-  (~150 s; M6 was ~130 s). Two existing tests changed for M7 and say why: the usage-line test pinned
+- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 924 tests in 71 files
+  (~225 s here; M7 was ~145 s, the git-repository tests are slow to set up). One older test (M1
+  determinism, two full AVIF encodes) timed out at 30 s once under that load and passes alone in about
+  23 s, so its timeout is now 120 s. Two existing tests changed for M7 and say why: the usage-line test pinned
   the exact command list (now checks that the original commands are still present), and the real
   session test now meets the save prompt after a run that changed a preset.
 - **M7 mutation checks** (each asserted as applied, 13 of 13 caught): last match wins instead of first,
@@ -257,6 +292,13 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
   `init` writing defaults, the save prompt ignoring what the config holds, video target sign flipped,
   TOML/TS configs rewritten, and file names not glob-escaped. One was not caught at first (assets
   vs per-file choice); a precedence test was added and the mutation then failed as it should.
+- **M8 checks**: exit codes 0/1/2 are tested through the real CLI; `--changed` is tested in real
+  temporary git repositories (untracked, modified, staged, deleted, a base branch that moved on,
+  a project in a subfolder of the repository, a config change, a shallow clone, no git, a bad ref).
+  Mutation-checked, 11 of 11 caught: filter ignored, project-level findings dropped, `--fail-on`
+  ignored, could-not-run exiting 1, config change not widening scope, the cache being written, an
+  option-looking ref accepted, untracked files ignored, diffing against the base tip instead of the
+  merge-base, Markdown not escaped, and the shallow-clone hint dropped.
 - **Round trip**: TUI choices (per-file presets, output folder) → written `bytecut.config.json` →
   the same executable plan with no overrides (compared without the human-readable reason), and a run
   made with the overrides is a full cache hit under the saved config.
@@ -318,6 +360,14 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
 - **`audit.ignore` only affects the audit**: `bytecut optimize` with no paths still processes those
   files; use `exclude` to keep files out of scans entirely. `exclude` does not veto a file named
   explicitly, as with `.gitignore`.
+- **`check` with zero config cannot fail** unless a budget is set, because only `project/over-budget`
+  defaults to `error`. Use `--fail-on warn` or promote rules in the config.
+- **A path after a bare `--changed` is read as the base ref**: write paths first, or `--changed=<ref>`.
+- **`--changed` still analyses the whole project.** The analysis cache is in the uncommitted `outDir`,
+  so a cold CI runner pays for every file each time.
+- **A project with no media passes** (`Scanned 0 images`); a wrong working directory therefore also
+  passes. Only a missing asset folder is exit 2.
+- **Submodules and paths outside the project folder** are not considered by `--changed`.
 - **Config is found in the working directory only** (as detection already is); no walking upwards.
 - **`concurrency` is image concurrency**; video stays at 1. `framework` replaces the detected
   framework but not React detection, which still reads `package.json`.
@@ -331,5 +381,6 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
 
 ## Next
 
-M8 — CI mode: `bytecut check` (exit non-zero on any `error`, including `project/over-budget`, which
-M7 now feeds), `--changed [base]`, and `--report md|json`. Needs a confirmed plan first (§10).
+M9 (stretch) — perceptual quality targets (`ssimulacra2` via our own WASM build, `vmaf` search),
+`maxSize` conflict resolution and `/compare`. It adds a new package and a verified licence, so it needs
+a confirmed plan first (§10).

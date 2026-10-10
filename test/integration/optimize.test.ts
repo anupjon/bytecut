@@ -190,7 +190,7 @@ describe("optimize (M1)", () => {
     for (const name of names) {
       expect(await hashAll(first.outDir, [name])).toEqual(await hashAll(second.outDir, [name]));
     }
-  });
+  }, 120_000);
 
   it("skips node_modules and the output folder when scanning a directory", async () => {
     const root = await newProject();

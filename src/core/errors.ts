@@ -14,6 +14,7 @@ export type BytecutErrorCode =
   | "MANIFEST_OUTDATED"
   | "CONFIG_INVALID"
   | "CONFIG_EXISTS"
+  | "GIT_UNAVAILABLE"
   | "BAD_ARGUMENTS";
 
 /** Expected, user-facing failure. The CLI layer prints `message` without a stack trace. */
