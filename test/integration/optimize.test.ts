@@ -550,7 +550,9 @@ describe("plain `bytecut` when it is not an interactive terminal (M4)", () => {
   it("--help and subcommands are unaffected", async () => {
     const root = await nextProject();
     const help = await cli(root, ["--help"]);
-    expect(help.stdout).toMatch(/audit\|optimize\|snippet\|doctor/);
+    // Whatever else is added, the commands that existed stay in the usage line.
+    const usage = /USAGE bytecut (\S+)/.exec(help.stdout)?.[1] ?? "";
+    for (const name of ["audit", "optimize", "snippet", "doctor"]) expect(usage).toContain(name);
     const audit = await cli(root, ["audit", "--no-cache"]);
     expect(audit.stdout).toContain("image/no-modern-format");
   });

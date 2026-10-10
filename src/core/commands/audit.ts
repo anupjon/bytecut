@@ -22,7 +22,9 @@ import { checkCache } from "../manifest/cache.js";
 import { parseManifest } from "../manifest/io.js";
 import { MANIFEST_FILE, type Manifest } from "../manifest/types.js";
 import { ANIMATED_GIF_REASON, buildPlan } from "../plan/build.js";
+import { BUILTIN_POLICY, rootPreset, type PresetPolicy } from "../presets/catalog.js";
 import { getImagePreset } from "../presets/index.js";
+import { matchesGlob } from "../config/glob.js";
 import { collectAssets } from "../scan/collect.js";
 import { scanReferences } from "../scan/references.js";
 import { toPosix } from "../posix.js";
@@ -34,7 +36,7 @@ import { estimateVideo } from "../audit/estimate-video.js";
 import { isFastStart } from "../video/probe.js";
 import type { VideoEngine } from "../video/types.js";
 import type { VideoFacts } from "../audit/types.js";
-import { classifyVideo } from "../classify/video.js";
+import { classifyVideo, type VideoClassification } from "../classify/video.js";
 import { basename, dirname, extname } from "node:path";
 
 export interface AuditOptions {
@@ -58,6 +60,12 @@ export interface AuditOptions {
   needsFfmpeg?: string;
   /** Per-file preset by source path; wins over the classifier (the TUI's per-file choice). */
   presetOverrides?: Record<string, string>;
+  /** Presets from the config and its `assets` rules; absent means the built-ins and the classifier. */
+  policy?: PresetPolicy;
+  /** .gitignore-style patterns for files left out of directory scans (config `exclude`). */
+  exclude?: string[];
+  /** Globs of sources whose findings are dropped (config `audit.ignore`). */
+  ignore?: string[];
   /** Coarse progress for a UI; `total` is the number of raster files. */
   onProgress?(event: { phase: AuditPhase; done: number; total: number }): void;
 }
@@ -109,7 +117,12 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
   const outDir = resolve(projectRoot, options.outDir);
   const notes: string[] = [];
 
-  const found = await collectAssets(options.inputs, { cwd: projectRoot, outDir });
+  const found = await collectAssets(options.inputs, {
+    cwd: projectRoot,
+    outDir,
+    ...(options.exclude ? { exclude: options.exclude } : {}),
+  });
+  const policy = options.policy ?? BUILTIN_POLICY;
   const fs = await SafeFs.create({
     projectRoot,
     outDir,
@@ -148,11 +161,23 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     choosePreset: (source, analysis) => {
       const forced = options.presetOverrides?.[source];
       if (forced) {
-        return { preset: getImagePreset(forced), reason: `set to ${forced} for this file` };
+        return {
+          preset: getImagePreset(forced, policy.catalog),
+          reason: `set to ${forced} for this file`,
+        };
+      }
+      const matched = policy.assetFor(source);
+      const assetPreset = matched ? policy.catalog.image[matched.preset] : undefined;
+      if (matched && assetPreset) {
+        return {
+          preset: assetPreset,
+          reason: `set to ${matched.preset} by assets "${matched.pattern}"`,
+          confidence: "high",
+        };
       }
       const verdict = classify(source, analysis);
       return {
-        preset: getImagePreset(verdict.preset),
+        preset: getImagePreset(verdict.preset, policy.catalog),
         reason: verdict.reason,
         confidence: verdict.confidence,
       };
@@ -170,6 +195,7 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     videoEngine: options.videoEngine ?? null,
     needsFfmpeg,
     presetOverrides: options.presetOverrides,
+    policy,
     cache,
   });
 
@@ -202,7 +228,8 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
       // The analysis is cached by hash, so this is a lookup, not a second decode.
       analysis: cache.getAnalysis(item.sourceSha256)!,
       classification: {
-        preset: item.preset as "photo" | "hero" | "icon",
+        // Rules reason about the built-in a custom preset descends from.
+        preset: rootPreset(policy.catalog, item.preset) as "photo" | "hero" | "icon",
         confidence: item.classification?.confidence ?? "low",
         reason: item.classification?.reason ?? "",
       },
@@ -298,7 +325,13 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
       faststart: isGif ? null : await isFastStart(absolute).catch(() => null),
       classification: isGif
         ? { preset: "gif-to-video", confidence: "high", reason: "animated GIF" }
-        : classifyVideo(item.source, probe),
+        : {
+            // What the plan chose (a per-file or `assets` choice included), as its built-in.
+            preset: rootPreset(policy.catalog, item.preset) as VideoClassification["preset"],
+            confidence:
+              item.classification?.confidence ?? classifyVideo(item.source, probe).confidence,
+            reason: item.classification?.reason ?? classifyVideo(item.source, probe).reason,
+          },
       item,
       cache: cacheState,
       estimate,
@@ -350,6 +383,12 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     ffmpeg: options.ffmpeg,
     options: (id) => settingFor(id).options,
   };
+
+  // `audit.ignore`: what is deliberately left alone raises no findings and is not listed to fix.
+  const ignorePatterns = options.ignore ?? [];
+  const isIgnored = (source: string) => ignorePatterns.some((p) => matchesGlob(p, source));
+  const ignoreSources = (all: Finding[]) =>
+    ignorePatterns.length === 0 ? all : all.filter((f) => !f.source || !isIgnored(f.source));
 
   const findings: Finding[] = [];
   for (const rule of ALL_RULES) {
@@ -445,9 +484,9 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
   ].sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
 
   return {
-    findings: sortFindings(findings),
+    findings: sortFindings(ignoreSources(findings)),
     unprobed,
-    files,
+    files: files.filter((f) => !isIgnored(f.source)),
     counts: {
       images: images.length,
       svgs: svgs.length,

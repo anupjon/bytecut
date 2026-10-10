@@ -6,6 +6,7 @@ import type {
   VideoOutputResult,
 } from "../execute/run.js";
 import type { Plan } from "../plan/types.js";
+import type { PresetCatalog } from "../presets/catalog.js";
 import { IMAGE_PRESETS } from "../presets/index.js";
 import {
   MANIFEST_VERSION,
@@ -42,6 +43,7 @@ function mergeItem(
   item: ItemResult,
   plannedPaths: Set<string>,
   publicPath: string,
+  catalog?: PresetCatalog,
 ): ManifestSource | null {
   const produced = new Map<string, ManifestOutput>();
   for (const out of item.outputs) {
@@ -70,7 +72,7 @@ function mergeItem(
     }
   }
 
-  const priority = IMAGE_PRESETS[item.preset]?.priority === true;
+  const priority = (catalog?.image ?? IMAGE_PRESETS)[item.preset]?.priority === true;
   return {
     sha256: item.sourceSha256,
     bytes: item.sourceBytes,
@@ -157,6 +159,7 @@ export function updateManifest(
   plan: Plan,
   result: RunResult,
   tools: Record<string, string>,
+  catalog?: PresetCatalog,
 ): Manifest {
   const sources: Record<string, ManifestSource> = { ...previous?.sources };
   const planned = new Map(plan.items.map((i) => [i.source, i]));
@@ -164,7 +167,7 @@ export function updateManifest(
   for (const item of result.items) {
     if (item.status === "skipped" || item.status === "cached") continue;
     const plannedPaths = new Set(planned.get(item.source)?.outputs.map((o) => o.path));
-    const merged = mergeItem(sources[item.source], item, plannedPaths, plan.publicPath);
+    const merged = mergeItem(sources[item.source], item, plannedPaths, plan.publicPath, catalog);
     if (merged) sources[item.source] = merged;
   }
 

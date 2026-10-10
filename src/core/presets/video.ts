@@ -3,7 +3,8 @@ import type { VideoCodec } from "../video/types.js";
 export type VideoPresetName = "background-video" | "content-video" | "gif-to-video";
 
 export interface VideoPreset {
-  name: VideoPresetName;
+  /** A built-in name, or the name of a preset defined in the config. */
+  name: string;
   /** Output order. AV1 first so the modern source is listed ahead of the H.264 fallback. */
   codecs: VideoCodec[];
   /** `strip` removes audio; `keep` re-encodes it as AAC. */
@@ -69,6 +70,9 @@ export const VIDEO_PRESETS: Record<VideoPresetName, VideoPreset> = {
   "gif-to-video": GIF_TO_VIDEO_PRESET,
 };
 
-export function getVideoPreset(name: string): VideoPreset | undefined {
-  return (VIDEO_PRESETS as Record<string, VideoPreset | undefined>)[name];
+export function getVideoPreset(
+  name: string,
+  catalog?: { video: Record<string, VideoPreset> },
+): VideoPreset | undefined {
+  return (catalog?.video ?? (VIDEO_PRESETS as Record<string, VideoPreset>))[name];
 }

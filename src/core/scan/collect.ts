@@ -57,9 +57,17 @@ async function loadScope(dir: string): Promise<Scope | null> {
  */
 export async function walkFiles(
   startDir: string,
-  options: { cwd: string; outDir: string },
+  options: { cwd: string; outDir: string; exclude?: string[] },
   visit: (path: string) => void | Promise<void>,
 ): Promise<void> {
+  // The config's `exclude`, in .gitignore syntax, relative to the project root.
+  const excluded = options.exclude?.length ? ignore().add(options.exclude) : null;
+  const isExcluded = (path: string, isDir: boolean): boolean => {
+    if (!excluded) return false;
+    const rel = relative(options.cwd, path).split(sep).join("/");
+    return rel !== "" && !rel.startsWith("..") && excluded.ignores(isDir ? `${rel}/` : rel);
+  };
+
   async function walk(dir: string, inherited: Scope[]): Promise<void> {
     const own = await loadScope(dir);
     const scopes = own ? [...inherited, own] : inherited;
@@ -68,10 +76,10 @@ export async function walkFiles(
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
         if (ALWAYS_SKIPPED.has(entry.name) || path === options.outDir) continue;
-        if (isIgnored(scopes, path, true)) continue;
+        if (isIgnored(scopes, path, true) || isExcluded(path, true)) continue;
         await walk(path, scopes);
       } else if (entry.isFile()) {
-        if (isIgnored(scopes, path, false)) continue;
+        if (isIgnored(scopes, path, false) || isExcluded(path, false)) continue;
         await visit(path);
       }
     }
@@ -96,7 +104,7 @@ export async function walkFiles(
 
 export async function collectAssets(
   inputs: string[],
-  options: { cwd: string; outDir: string },
+  options: { cwd: string; outDir: string; exclude?: string[] },
 ): Promise<CollectResult> {
   const files = new Set<string>();
   const svgs = new Set<string>();

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { CONFIG_FILES } from "./config/files.js";
 import { BytecutError } from "./errors.js";
 
 /**
@@ -198,4 +199,36 @@ export class SafeFs {
       throw new BytecutError("UNSAFE_PATH", `Output path escapes the output folder: ${requested}`);
     }
   }
+}
+
+/**
+ * The one write outside `outDir` (§6.2): the project's config file, from `init` or an explicit
+ * "save". Only the known config file names are accepted, in the project root itself, and the
+ * write is atomic and never goes through a symlink.
+ */
+export async function writeConfigFile(
+  projectRoot: string,
+  fileName: string,
+  content: string,
+): Promise<string> {
+  if (!(CONFIG_FILES as readonly string[]).includes(fileName)) {
+    throw new BytecutError("UNSAFE_PATH", `Not a bytecut config file name: ${fileName}`);
+  }
+  const target = join(await realpath(projectRoot), fileName);
+  try {
+    if ((await lstat(target)).isSymbolicLink()) {
+      throw new BytecutError("UNSAFE_PATH", `Refusing to write through symlink: ${fileName}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const temp = join(dirname(target), `.${fileName}.${randomBytes(6).toString("hex")}.tmp`);
+  try {
+    await writeFile(temp, content, { flag: "wx" });
+    await rename(temp, target);
+  } catch (error) {
+    await unlink(temp).catch(() => undefined);
+    throw error;
+  }
+  return target;
 }

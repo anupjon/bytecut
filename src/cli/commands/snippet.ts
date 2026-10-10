@@ -12,7 +12,7 @@ import {
   type Syntax,
 } from "../../core/snippets/index.js";
 import { guarded } from "../errors.js";
-import { discover } from "../shared.js";
+import { configArg, discover } from "../shared.js";
 
 export default defineCommand({
   meta: {
@@ -20,6 +20,7 @@ export default defineCommand({
     description: "Print the <picture> / <video> markup for files that have been optimized",
   },
   args: {
+    ...configArg,
     format: { type: "string", description: "html or jsx (default: from the detected framework)" },
     alt: { type: "string", description: "Alt text for images (default: empty, i.e. decorative)" },
     sizes: { type: "string", description: 'The sizes attribute (default: "100vw")' },
@@ -40,7 +41,7 @@ export default defineCommand({
         "Name at least one optimized file, e.g. `bytecut snippet public/img/hero.jpg`.",
       );
     }
-    const found = await discover([], args["out-dir"]);
+    const found = await discover([], args["out-dir"], args.config);
     const format = (args.format as string | undefined) ?? snippetFormatFor(found.project);
     if (format !== "html" && format !== "jsx") {
       throw new BytecutError("BAD_ARGUMENTS", `--format must be html or jsx, not "${format}".`);

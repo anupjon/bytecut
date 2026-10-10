@@ -32,6 +32,17 @@ export interface DoctorOptions {
   ffprobeConfig?: string | undefined;
 }
 
+export interface ProjectReport {
+  framework: string;
+  /** Config file in use, relative to the project root; null means zero-config. */
+  configFile: string | null;
+  /** Set when the config exists but could not be used. */
+  configError?: string;
+  outDir: string;
+  /** The output folder is matched by a .gitignore; outputs are meant to be committed. */
+  outDirIgnored: boolean;
+}
+
 export interface BinaryReport {
   resolved: ResolvedBinary;
   version?: string;
@@ -45,6 +56,8 @@ export interface DoctorReport {
   ffmpeg: BinaryReport & { info?: BinaryInfo };
   ffprobe: BinaryReport;
   encoders: { av1: "libsvtav1" | "libaom-av1" | null; h264: boolean; vp9: boolean; vmaf: boolean };
+  /** The project and its config, when doctor is run for one (filled in by the CLI). */
+  project?: ProjectReport;
   /** What will be degraded, each with the reason. Empty when everything is available. */
   degradations: string[];
   /** Hard failures: bytecut cannot run correctly at all. */
@@ -210,6 +223,18 @@ export function formatDoctorReport(report: DoctorReport): string {
     lines.push(`  H.264:   ${yesNo(report.encoders.h264)} (libx264)`);
     lines.push(`  VP9:     ${yesNo(report.encoders.vp9)} (libvpx-vp9)`);
     lines.push(`  libvmaf: ${yesNo(report.encoders.vmaf)}`);
+  }
+
+  if (report.project) {
+    const p = report.project;
+    lines.push("", `Project: ${p.framework} → ${p.outDir}`);
+    lines.push(`Config:  ${p.configFile ?? "none (zero-config)"}`);
+    if (p.configError) lines.push(`  problem: ${p.configError}`);
+    if (p.outDirIgnored) {
+      lines.push(
+        `  note: ${p.outDir} is matched by a .gitignore. bytecut's outputs are meant to be committed, so deploys need no encoding step. Nothing was changed.`,
+      );
+    }
   }
 
   lines.push("");

@@ -12,6 +12,8 @@ export type BytecutErrorCode =
   | "MANIFEST_INVALID"
   | "MANIFEST_UNSUPPORTED"
   | "MANIFEST_OUTDATED"
+  | "CONFIG_INVALID"
+  | "CONFIG_EXISTS"
   | "BAD_ARGUMENTS";
 
 /** Expected, user-facing failure. The CLI layer prints `message` without a stack trace. */

@@ -17,3 +17,22 @@ export function percentChange(before: number, after: number): string {
 }
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+const SIZE_UNITS: Record<string, number> = {
+  b: 1,
+  kb: 1024,
+  kib: 1024,
+  mb: 1024 ** 2,
+  mib: 1024 ** 2,
+  gb: 1024 ** 3,
+  gib: 1024 ** 3,
+};
+
+/** `"250 KB"`, `"1.5mb"` or `"1024"` (bytes) to bytes; null when it isn't a size. KB is 1024, as in `formatBytes`. */
+export function parseSize(text: string): number | null {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*([a-z]*)\s*$/i.exec(text);
+  if (!match) return null;
+  const factor = SIZE_UNITS[(match[2] ?? "").toLowerCase() || "b"];
+  if (factor === undefined) return null;
+  return Math.round(Number(match[1]) * factor);
+}

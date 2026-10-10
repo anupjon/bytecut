@@ -14,9 +14,9 @@ import { copyToClipboard, systemClipboardDeps, type CopyResult } from "./clipboa
 import { CommandBar, computeSuggestions } from "./components/commandbar.js";
 import { Header, Help, StatusLine } from "./components/layout.js";
 import { Details, FileList, ReportOnly } from "./components/list.js";
-import { DoneView, ReviewView, RunView, SnippetOverlay } from "./components/run.js";
+import { DoneView, ReviewView, RunView, SaveOverlay, SnippetOverlay } from "./components/run.js";
 import { displayOutDir, type Session } from "./session.js";
-import { PRESET_CYCLE, initialState, reducer, rowAt, type State } from "./state.js";
+import { initialState, reducer, rowAt, unsavedChoices, type State } from "./state.js";
 
 const FRAMEWORK_NAMES: Record<string, string> = {
   next: "Next.js",
@@ -34,6 +34,8 @@ export interface AppProps {
   outDir: string;
   /** Formatted `doctor` report, loaded on demand for /doctor. */
   loadDoctor: () => Promise<string>;
+  /** Image presets `p` cycles through (built-ins plus the config's); defaults to the built-ins. */
+  presetNames?: string[];
   /** Puts text on the clipboard. Injectable so tests never touch the real one. */
   copy?: (text: string) => Promise<CopyResult>;
 }
@@ -42,13 +44,17 @@ export function App(props: AppProps): ReactNode {
   const { session, project, projectRoot } = props;
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const [state, dispatch] = useReducer(reducer, props.outDir, initialState);
+  const [state, dispatch] = useReducer(reducer, props.outDir, (outDir: string) =>
+    initialState(outDir, props.presetNames),
+  );
   const [doctor, setDoctor] = useState<string | null>(null);
 
   // Handlers read the latest state without re-subscribing the input listener.
   const stateRef = useRef<State>(state);
   stateRef.current = state;
   const abortRef = useRef<AbortController | null>(null);
+  /** Choices the user said "not now" to, so the same question is not asked after every run. */
+  const declinedRef = useRef<string | null>(null);
 
   const term = stdout as NodeJS.WriteStream | undefined;
   const rows = term?.rows ?? 24;
@@ -132,6 +138,15 @@ export function App(props: AppProps): ReactNode {
         controller.signal,
       );
       dispatch({ type: "run-done", result });
+      // Offer to keep what was chosen, once, and only if the config does not already say it.
+      const unsaved = unsavedChoices(stateRef.current);
+      if (
+        !result.cancelled &&
+        (unsaved.outDir !== undefined || unsaved.presets !== undefined) &&
+        JSON.stringify(unsaved) !== declinedRef.current
+      ) {
+        dispatch({ type: "save-open", choices: unsaved });
+      }
     } catch (error) {
       dispatch({ type: "fatal", error: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -194,6 +209,24 @@ export function App(props: AppProps): ReactNode {
     [session, copy],
   );
 
+  const askToSave = useCallback(() => {
+    const unsaved = unsavedChoices(stateRef.current);
+    if (unsaved.outDir === undefined && unsaved.presets === undefined) {
+      dispatch({
+        type: "status",
+        message: "Nothing to save: no choice differs from the project config.",
+      });
+      return;
+    }
+    dispatch({ type: "save-open", choices: unsaved });
+  }, []);
+
+  const confirmSave = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.save) return;
+    dispatch({ type: "save-result", outcome: await session.saveChoices(s.save.choices) });
+  }, [session]);
+
   /** Files on the results screen, in the order formatSummary lists them. */
   const doneFiles = useCallback((): string[] => {
     const r = stateRef.current.result;
@@ -229,10 +262,10 @@ export function App(props: AppProps): ReactNode {
           return;
         case "preset": {
           const name = parsed.args[0];
-          if (!name || !(PRESET_CYCLE as readonly string[]).includes(name)) {
+          if (!name || !s.presetNames.includes(name)) {
             dispatch({
               type: "status",
-              message: `Usage: /preset <${PRESET_CYCLE.join("|")}> [@file…]`,
+              message: `Usage: /preset <${s.presetNames.join("|")}> [@file…]`,
             });
             return;
           }
@@ -240,6 +273,9 @@ export function App(props: AppProps): ReactNode {
           dispatch({ type: "cycle-preset", sources, to: name });
           return;
         }
+        case "save":
+          askToSave();
+          return;
         case "out":
           if (parsed.args[0]) await applyOutDir(parsed.args[0]);
           else dispatch({ type: "status", message: "Usage: /out <dir>" });
@@ -279,7 +315,7 @@ export function App(props: AppProps): ReactNode {
           return;
       }
     },
-    [applyOutDir, exit, props, resolveMentions, showSnippet, startReview],
+    [applyOutDir, askToSave, exit, props, resolveMentions, showSnippet, startReview],
   );
 
   // --- keys ---------------------------------------------------------------------------
@@ -373,6 +409,16 @@ export function App(props: AppProps): ReactNode {
       return;
     }
 
+    if (s.overlay === "save") {
+      if (s.save?.outcome != null) dispatch({ type: "back" });
+      else if (input === "y" || key.return) void confirmSave();
+      else if (input === "n" || input === "q" || key.escape) {
+        if (s.save) declinedRef.current = JSON.stringify(s.save.choices);
+        dispatch({ type: "back" });
+      }
+      return;
+    }
+
     if (s.overlay) {
       if (key.escape || key.return || input === "q" || input === "?" || input === "d") {
         dispatch({ type: "back" });
@@ -418,7 +464,8 @@ export function App(props: AppProps): ReactNode {
         else if (input === "c") {
           const file = files[s.doneCursor];
           if (file) void showSnippet(file);
-        } else if (key.return || key.escape) dispatch({ type: "back" });
+        } else if (input === "s") askToSave();
+        else if (key.return || key.escape) dispatch({ type: "back" });
         break;
       }
       case "scanning":
@@ -449,6 +496,19 @@ export function App(props: AppProps): ReactNode {
     body = <ReviewView review={state.review} outDir={state.outDir} />;
   } else if (state.view === "running") {
     body = <RunView state={state} />;
+  } else if (state.overlay === "save" && state.save) {
+    // After a run the results stay visible above the question.
+    body =
+      state.view === "done" ? (
+        <Box flexDirection="column">
+          <DoneView state={state} />
+          <Box marginTop={1}>
+            <SaveOverlay save={state.save} outDir={state.outDir} />
+          </Box>
+        </Box>
+      ) : (
+        <SaveOverlay save={state.save} outDir={state.outDir} />
+      );
   } else if (state.overlay === "snippet" && state.snippet) {
     body = <SnippetOverlay snippet={state.snippet} />;
   } else if (state.view === "done") {

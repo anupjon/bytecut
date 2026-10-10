@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { formatSummary } from "../../cli/format.js";
 import { formatBytes, plural } from "../../core/units.js";
 import type { OutputResult, VideoOutputResult } from "../../core/execute/run.js";
-import type { Review, SnippetView, State } from "../state.js";
+import type { Review, SnippetView, State, SaveView } from "../state.js";
 
 const BAR_WIDTH = 30;
 
@@ -146,6 +146,49 @@ export function SnippetOverlay(props: { snippet: SnippetView }): ReactNode {
           </Text>
         ))}
         <Text dimColor>c copy again · esc close</Text>
+      </Box>
+    </Box>
+  );
+}
+
+export function SaveOverlay(props: { save: SaveView; outDir: string }): ReactNode {
+  const { save } = props;
+  const { choices, outcome } = save;
+  const entries = Object.entries(choices.presets ?? {});
+  return (
+    <Box flexDirection="column" borderStyle="round" paddingX={1}>
+      <Text bold>Save these choices to the project config?</Text>
+      <Box flexDirection="column" marginTop={1}>
+        {entries.slice(0, 10).map(([source, preset]) => (
+          <Text key={source} wrap="truncate-middle">
+            {source} → {preset}
+          </Text>
+        ))}
+        {entries.length > 10 ? <Text dimColor>… and {entries.length - 10} more</Text> : null}
+        {choices.outDir !== undefined ? <Text>output folder → {choices.outDir}</Text> : null}
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        {outcome === null ? (
+          <Text dimColor>y save · n not now</Text>
+        ) : outcome.kind === "written" ? (
+          <Text color="green">
+            {outcome.created ? "Created" : "Updated"} {outcome.file}. Later runs use it.
+          </Text>
+        ) : outcome.kind === "manual" ? (
+          <>
+            <Text color="yellow">
+              {outcome.file} is a file you maintain, so it was not rewritten. Add:
+            </Text>
+            {outcome.snippet.split("\n").map((line, i) => (
+              <Text key={i}>{line}</Text>
+            ))}
+          </>
+        ) : outcome.kind === "error" ? (
+          <Text color="red">{outcome.message}</Text>
+        ) : (
+          <Text dimColor>Nothing to save.</Text>
+        )}
+        {outcome !== null ? <Text dimColor>any key closes this</Text> : null}
       </Box>
     </Box>
   );

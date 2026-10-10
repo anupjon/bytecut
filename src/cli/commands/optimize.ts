@@ -6,13 +6,14 @@ import { defineCommand } from "citty";
 import pkg from "../../../package.json" with { type: "json" };
 import { optimize } from "../../core/commands/optimize.js";
 import { isPlaceholderKind, type PlaceholderKind } from "../../core/placeholders/types.js";
-import { detectProject } from "../../core/scan/detect.js";
+import { loadConfig } from "../../core/config/load.js";
+import { resolveConfig } from "../../core/config/resolve.js";
 import { sharpImageEngine } from "../../core/engines/image.js";
 import { BytecutError } from "../../core/errors.js";
 import { parsePlan, serializePlan } from "../../core/plan/schema.js";
 import type { Plan } from "../../core/plan/types.js";
 import { guarded } from "../errors.js";
-import { createVideoEngine, ffmpegInstallText } from "../shared.js";
+import { configArg, createVideoEngine, ffmpegInstallText } from "../shared.js";
 import { formatFindings, formatPlan, formatSummary } from "../format.js";
 
 const FRAMEWORK_NAMES: Record<string, string> = {
@@ -30,6 +31,7 @@ export default defineCommand({
     description: "Optimize images into the output folder (sources are never modified)",
   },
   args: {
+    ...configArg,
     yes: {
       type: "boolean",
       alias: "y",
@@ -109,7 +111,10 @@ export default defineCommand({
     if (!dryRun) process.once("SIGINT", onSigint);
 
     const projectRoot = process.cwd();
-    const project = await detectProject(projectRoot);
+    const config = await resolveConfig(projectRoot, await loadConfig(projectRoot, args.config));
+    const project = config.project;
+    // Flag > config > the default of dominant colour.
+    placeholder ??= config.placeholder;
 
     // Zero-config: with no paths, scan the framework's asset folders.
     let scanInputs = inputs;
@@ -135,12 +140,14 @@ export default defineCommand({
       outDir: savedPlan?.outDir ?? args["out-dir"] ?? project.outDir,
       staticRoot: project.staticRoot,
       publicPath: args["public-path"] ?? project.publicPath,
+      policy: config.policy,
+      exclude: config.exclude,
       ...(args.preset ? { presetOverride: args.preset } : {}),
       ...(placeholder ? { placeholder } : {}),
       execute: !dryRun,
       force: Boolean(args.force),
-      concurrency: Math.min(4, availableParallelism()),
-      videoEngine: createVideoEngine({ ffmpeg: args.ffmpeg, ffprobe: args.ffprobe }),
+      concurrency: config.concurrency ?? Math.min(4, availableParallelism()),
+      videoEngine: createVideoEngine({ ffmpeg: args.ffmpeg, ffprobe: args.ffprobe }, config),
       needsFfmpeg: ffmpegInstallText(),
       signal: controller.signal,
       onItemDone: (item, done, total) => console.error(`[${done}/${total}] ${item.source}`),

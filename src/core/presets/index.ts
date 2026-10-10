@@ -13,12 +13,16 @@ export const IMAGE_PRESETS: Record<string, ImagePreset> = {
   icon: ICON_PRESET,
 };
 
-export function getImagePreset(name: string): ImagePreset {
-  const preset = IMAGE_PRESETS[name];
+export function getImagePreset(
+  name: string,
+  catalog?: { image: Record<string, ImagePreset> },
+): ImagePreset {
+  const presets = catalog?.image ?? IMAGE_PRESETS;
+  const preset = presets[name];
   if (!preset) {
     throw new BytecutError(
       "BAD_ARGUMENTS",
-      `Unknown preset "${name}". Image presets: ${Object.keys(IMAGE_PRESETS).join(", ")}.`,
+      `Unknown preset "${name}". Image presets: ${Object.keys(presets).join(", ")}.`,
     );
   }
   return preset;

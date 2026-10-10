@@ -16,6 +16,9 @@ export interface FfmpegEngineOptions {
   /** `--ffmpeg` / `--ffprobe` flag values. */
   ffmpegFlag?: string | undefined;
   ffprobeFlag?: string | undefined;
+  /** `ffmpegPath` / `ffprobePath` from the config: below the flag and the env var. */
+  ffmpegConfig?: string | undefined;
+  ffprobeConfig?: string | undefined;
   env: Record<string, string | undefined>;
   platform: NodeJS.Platform;
   deps: ResolveDeps;
@@ -114,7 +117,11 @@ export function createFfmpegVideoEngine(options: FfmpegEngineOptions): VideoEngi
   function resolve() {
     resolved ??= (async () => {
       const base = { env: options.env, platform: options.platform };
-      const ffmpeg = resolveBinary("ffmpeg", { ...base, flag: options.ffmpegFlag }, options.deps);
+      const ffmpeg = resolveBinary(
+        "ffmpeg",
+        { ...base, flag: options.ffmpegFlag, config: options.ffmpegConfig },
+        options.deps,
+      );
       if (!ffmpeg.found) return null;
       let info;
       try {
@@ -124,7 +131,12 @@ export function createFfmpegVideoEngine(options: FfmpegEngineOptions): VideoEngi
       }
       const probe = resolveBinary(
         "ffprobe",
-        { ...base, flag: options.ffprobeFlag, ffmpegDir: ffmpegDirOf(ffmpeg) },
+        {
+          ...base,
+          flag: options.ffprobeFlag,
+          config: options.ffprobeConfig,
+          ffmpegDir: ffmpegDirOf(ffmpeg),
+        },
         options.deps,
       );
       return {

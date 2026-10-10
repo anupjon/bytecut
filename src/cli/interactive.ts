@@ -42,13 +42,14 @@ export async function runDefault(): Promise<void> {
     await runTui({
       projectRoot: found.projectRoot,
       project: found.project,
+      config: found.config,
       inputs: found.scanInputs,
       outDir: found.outDir,
       engine: sharpImageEngine,
       svgEngine: svgoEngine,
       toolVersion: pkg.version,
-      ffmpeg: ffmpegStatus(),
-      videoEngine: createVideoEngine(),
+      ffmpeg: ffmpegStatus(found.config),
+      videoEngine: createVideoEngine({}, found.config),
       needsFfmpeg: ffmpegInstallText(),
       loadDoctor: async () => formatDoctorReport(await collectDoctorReport(doctorDeps())),
     });
@@ -62,9 +63,14 @@ export async function runDefault(): Promise<void> {
     inputs: found.scanInputs,
     outDir: found.outDir,
     staticRoot: found.project.staticRoot,
-    ffmpeg: ffmpegStatus(),
-    videoEngine: createVideoEngine(),
+    ffmpeg: ffmpegStatus(found.config),
+    videoEngine: createVideoEngine({}, found.config),
     needsFfmpeg: ffmpegInstallText(),
+    policy: found.config.policy,
+    exclude: found.config.exclude,
+    ignore: found.config.auditIgnore,
+    settings: found.config.rules,
+    budgets: found.config.budgets,
     // A bare `npx bytecut` in CI should not create folders in the repo.
     persistCache: false,
   });

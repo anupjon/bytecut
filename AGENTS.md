@@ -130,6 +130,14 @@ match wins), `presets` (with `extends`), `audit.rules` (ESLint-style `[severity,
 `audit.ignore`, `budgets`, `manifest.placeholder`, `concurrency`, `ffmpegPath`, `ffprobePath`, `ssimulacra2Path` (M9). Validate with zod. Missing
 config must behave exactly like zero-config.
 
+As implemented (`src/core/config/`): the file is `bytecut.config.{ts,mts,js,mjs,json,toml}` in the
+project root (or `--config`); the schema is strict, so unknown keys are errors. `assets` maps globs
+to preset names (first match wins; a pattern without `/` matches the name at any depth). `presets`
+entries say what they `extends` (a built-in name without `extends` changes that built-in) and may set
+`target`, `widths`, `formats`, `quality`, `effort`, `lossless`, `priority` (images) or `audio`,
+`maxWidth`, `maxFps`, `codecs`, `crf` (video). `budgets` takes `maxFileSize` / `maxTotalSize` as bytes
+or `"250 KB"`. `ssimulacra2`, `vmaf`, `raw` and `ssimulacra2Path` are rejected until M9.
+
 ### Presets
 Built-ins: `photo`, `hero`, `icon`, `svg`, `background-video`, `content-video`, `gif-to-video`.
 Quality is intent (`target: "low" | "balanced" | "high" | "lossless"`), optionally with a perceptual
@@ -434,4 +442,11 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — `hero` is the only `priority` preset; priority is stored in the manifest, and `--priority`/`--lazy` override it per snippet — so custom presets later cannot silently lose it.
 - 2026-10-10 — Generated JSX is type-checked with the real compiler in tests, with negative controls — attribute casing (`fetchPriority`, `srcSet`, `playsInline`) is exactly what hand-written generators get wrong.
 - 2026-10-10 — The TUI copies with a native tool, then OSC 52, and always shows the markup — no dependency, works over SSH, and a failed copy is never a dead end.
-
+- 2026-10-10 — `.ts` configs are loaded with Node's own type stripping, no loader dependency (confirmed with you) — keeps §2's dependency list short; older 22.x gets a clear error for `.ts` only and JSON/TOML still work.
+- 2026-10-10 — Added `smol-toml` for TOML configs (confirmed with you) — Node has no TOML parser and hand-rolling one is a worse risk than a small zero-dependency package.
+- 2026-10-10 — `init` and the TUI save write `bytecut.config.json`; a TS or TOML config is never rewritten, the lines to add are shown instead (confirmed with you) — a rewrite would drop comments or mangle code the user owns.
+- 2026-10-10 — `ssimulacra2`, `vmaf`, `raw` and `ssimulacra2Path` fail validation with "arrives in M9" (confirmed with you) — no schema is promised ahead of its engine and nothing is silently accepted-and-ignored. `target` maps to fixed quality: AVIF 45/60/75, WebP 65/78/88, video CRF +4/0/-4.
+- 2026-10-10 — Precedence is classifier < `assets` (first match) < `--preset` < per-file choice, and flags > config > detection for folders, placeholder and ffmpeg paths — matches §4 and means a saved choice and the choice made in the session produce the same executable plan.
+- 2026-10-10 — The config file is the one write outside `outDir`; `writeConfigFile` in `fs-safe.ts` accepts only the known config names in the project root, refuses symlinks and is atomic — keeps §3's single write module and §6.2 true.
+- 2026-10-10 — A built-in preset name defined in the config without `extends` changes that built-in, so the classifier's verdicts and every `extends` chain see the change — the natural reading of "make `photo` use these widths".
+- 2026-10-10 — A saved per-file preset is an exact, glob-escaped path placed before existing `assets` rules (first match wins), and a declined save question is not repeated for the same choices in a session.

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import type { AnalysisCache } from "../cache/store.js";
 import { ANIMATED_GIF_REASON } from "../plan/build.js";
 import type { Plan } from "../plan/types.js";
+import type { PresetPolicy } from "../presets/catalog.js";
 import { buildVideoItems } from "../plan/video.js";
 import type { VideoEngine } from "../video/types.js";
 
@@ -20,6 +21,7 @@ export async function withVideos(
     videoEngine: VideoEngine | null;
     needsFfmpeg: string;
     presetOverrides?: Record<string, string> | undefined;
+    policy?: PresetPolicy | undefined;
     cache: AnalysisCache;
   },
 ): Promise<Plan> {
@@ -42,6 +44,7 @@ export async function withVideos(
     engine,
     needsFfmpeg: options.needsFfmpeg,
     ...(options.presetOverrides ? { presetOverrides: options.presetOverrides } : {}),
+    ...(options.policy ? { policy: options.policy } : {}),
     claimed,
     async probe(path, digest) {
       const cached = options.cache.getVideoProbe(digest);

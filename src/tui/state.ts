@@ -2,10 +2,12 @@ import type { Finding } from "../core/audit/types.js";
 import type { AuditPhase } from "../core/commands/audit.js";
 import type { OutputResult, RunResult, VideoOutputResult } from "../core/execute/run.js";
 import type { Plan } from "../core/plan/types.js";
+import type { Choices } from "../core/config/choices.js";
 import { defaultSelection, type Model, type Row } from "./model.js";
 
 export type View = "scanning" | "list" | "review" | "running" | "done" | "error";
-export type Overlay = null | "help" | "details" | "outdir" | "command" | "doctor" | "snippet";
+export type Overlay =
+  null | "help" | "details" | "outdir" | "command" | "doctor" | "snippet" | "save";
 
 export const PRESET_CYCLE = ["photo", "hero", "icon"] as const;
 
@@ -45,8 +47,26 @@ export interface SnippetView {
   copied: string | null;
 }
 
+/** What happened when the user asked to keep their choices. */
+export type SaveOutcome =
+  | { kind: "nothing" }
+  | { kind: "written"; file: string; created: boolean }
+  | { kind: "manual"; file: string; snippet: string }
+  | { kind: "error"; message: string };
+
+export interface SaveView {
+  choices: Choices;
+  /** Null while the question is being asked. */
+  outcome: SaveOutcome | null;
+}
+
 export interface State {
   view: View;
+  /** Names `p` cycles through and `/preset` accepts: the config's image presets. */
+  presetNames: string[];
+  /** What the config already says, so only new choices are offered for saving. */
+  baseline: { presets: Record<string, string>; outDir: string };
+  save: SaveView | null;
   /** The snippet overlay's content. */
   snippet: SnippetView | null;
   /** Highlighted file on the results screen; `c` copies its snippet. */
@@ -76,9 +96,12 @@ export interface State {
 
 export const EMPTY_MODEL: Model = { rows: [], reportOnly: [], covered: 0, skipped: [], notes: [] };
 
-export function initialState(outDir: string): State {
+export function initialState(outDir: string, presetNames: readonly string[] = PRESET_CYCLE): State {
   return {
     view: "scanning",
+    presetNames: [...presetNames],
+    baseline: { presets: {}, outDir },
+    save: null,
     snippet: null,
     doneCursor: 0,
     scanId: 0,
@@ -101,7 +124,22 @@ export function initialState(outDir: string): State {
   };
 }
 
+/** Choices made in this session that the config does not already hold. */
+export function unsavedChoices(state: State): Choices {
+  const presets = Object.fromEntries(
+    Object.entries(state.presets).filter(
+      ([source, preset]) => state.baseline.presets[source] !== preset,
+    ),
+  );
+  return {
+    ...(state.outDir !== state.baseline.outDir ? { outDir: state.outDir } : {}),
+    ...(Object.keys(presets).length > 0 ? { presets } : {}),
+  };
+}
+
 export type Action =
+  | { type: "save-open"; choices: Choices }
+  | { type: "save-result"; outcome: SaveOutcome }
   | { type: "scan-progress"; phase: AuditPhase; done: number; total: number }
   | { type: "scan-done"; model: Model; files: string[] }
   | { type: "fatal"; error: string }
@@ -218,9 +256,8 @@ export function reducer(state: State, action: Action): State {
         const row = state.model.rows.find((r) => r.source === source);
         if (!row) continue;
         const current = presets[source] ?? row.preset;
-        const next =
-          action.to ??
-          PRESET_CYCLE[(PRESET_CYCLE.indexOf(current as never) + 1) % PRESET_CYCLE.length]!;
+        const names = state.presetNames;
+        const next = action.to ?? names[(names.indexOf(current) + 1) % names.length]!;
         if (next === row.preset) delete presets[source];
         else presets[source] = next;
       }
@@ -290,6 +327,31 @@ export function reducer(state: State, action: Action): State {
 
     case "run-done":
       return { ...state, view: "done", result: action.result, cancelling: false, doneCursor: 0 };
+
+    case "save-open":
+      return {
+        ...state,
+        overlay: "save",
+        save: { choices: action.choices, outcome: null },
+        input: "",
+        status: null,
+      };
+
+    case "save-result": {
+      if (!state.save) return state;
+      const saved = action.outcome.kind === "written";
+      return {
+        ...state,
+        save: { ...state.save, outcome: action.outcome },
+        // Once written, the config holds these, so they are no longer news.
+        baseline: saved
+          ? {
+              presets: { ...state.baseline.presets, ...state.save.choices.presets },
+              outDir: state.outDir,
+            }
+          : state.baseline,
+      };
+    }
 
     case "snippet":
       return { ...state, overlay: "snippet", snippet: action.snippet, input: "", status: null };

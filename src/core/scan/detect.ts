@@ -58,7 +58,10 @@ async function readDependencies(root: string): Promise<Set<string>> {
  * Order matters: Astro and Next both pull in Vite-like tooling, so the more specific
  * framework wins over `vite`.
  */
-export async function detectProject(root: string): Promise<ProjectInfo> {
+export async function detectProject(
+  root: string,
+  options: { framework?: Framework | undefined } = {},
+): Promise<ProjectInfo> {
   const deps = await readDependencies(root);
   const files = await readdir(root).catch(() => [] as string[]);
 
@@ -72,6 +75,9 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
       break;
     }
   }
+
+  // The config's `framework` replaces the verdict, and the defaults follow from it.
+  if (options.framework) framework = options.framework;
 
   const react = deps.has("react");
   const hasPublic = await isDirectory(join(root, "public"));

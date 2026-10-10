@@ -69,6 +69,7 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     review: [] as Array<{ sources: string[]; presets: Record<string, string>; outDir: string }>,
     run: [] as Array<{ sources: string[]; presets: Record<string, string>; outDir: string }>,
     snippet: [] as string[],
+    save: [] as Array<Parameters<Session["saveChoices"]>[0]>,
   };
   const m = over.model ?? model([row("a.jpg"), row("b.jpg"), row("c.jpg", { severity: "info" })]);
   const session: Session = {
@@ -99,6 +100,10 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     },
     async validateOutDir() {
       return null;
+    },
+    async saveChoices(choices) {
+      calls.save.push(choices);
+      return { kind: "written", file: "bytecut.config.json", created: true };
     },
     async snippet(source) {
       calls.snippet.push(source);

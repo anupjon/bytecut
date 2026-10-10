@@ -22,6 +22,7 @@ import { updateManifest } from "../manifest/update.js";
 import { buildPlan, DEFAULT_PUBLIC_PATH, type PresetChoice } from "../plan/build.js";
 import { withVideos } from "./plan-media.js";
 import type { Plan } from "../plan/types.js";
+import { BUILTIN_POLICY, type PresetPolicy } from "../presets/catalog.js";
 import { getImagePreset } from "../presets/index.js";
 import type { PlaceholderKind } from "../placeholders/types.js";
 import { collectAssets } from "../scan/collect.js";
@@ -48,6 +49,10 @@ export interface OptimizeOptions {
   presetOverride?: string;
   /** Per-file preset by source path (relative, POSIX); wins over `presetOverride` and the classifier. */
   presetOverrides?: Record<string, string>;
+  /** Presets from the config and its `assets` rules; absent means the built-ins and the classifier. */
+  policy?: PresetPolicy;
+  /** .gitignore-style patterns for files left out of directory scans. */
+  exclude?: string[];
   /** Write outputs. When false only the plan and findings are produced. */
   execute: boolean;
   force?: boolean;
@@ -109,7 +114,11 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
       resolve(projectRoot, ...i.source.split("/")),
     );
   } else {
-    const found = await collectAssets(options.inputs ?? [], { cwd: projectRoot, outDir });
+    const found = await collectAssets(options.inputs ?? [], {
+      cwd: projectRoot,
+      outDir,
+      ...(options.exclude ? { exclude: options.exclude } : {}),
+    });
     sourceFiles = [...found.files, ...found.videos];
     sourceDirs = found.sourceDirs;
     unsupported = found.unsupported;
@@ -146,18 +155,34 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     return fresh;
   };
 
-  const override = options.presetOverride ? getImagePreset(options.presetOverride) : null;
+  const policy = options.policy ?? BUILTIN_POLICY;
+  const override = options.presetOverride
+    ? getImagePreset(options.presetOverride, policy.catalog)
+    : null;
   const choosePreset = (source: string, analysis: ImageAnalysis): PresetChoice => {
     const perFile = options.presetOverrides?.[source];
     if (perFile) {
-      return { preset: getImagePreset(perFile), reason: `set to ${perFile} for this file` };
+      return {
+        preset: getImagePreset(perFile, policy.catalog),
+        reason: `set to ${perFile} for this file`,
+      };
     }
     if (override) {
       return { preset: override, reason: `forced with --preset ${override.name}` };
     }
+    // An `assets` rule naming a video preset says nothing about a still image.
+    const matched = policy.assetFor(source);
+    const assetPreset = matched ? policy.catalog.image[matched.preset] : undefined;
+    if (matched && assetPreset) {
+      return {
+        preset: assetPreset,
+        reason: `set to ${matched.preset} by assets "${matched.pattern}"`,
+        confidence: "high",
+      };
+    }
     const verdict = classify(source, analysis);
     return {
-      preset: getImagePreset(verdict.preset),
+      preset: getImagePreset(verdict.preset, policy.catalog),
       reason: verdict.reason,
       confidence: verdict.confidence,
     };
@@ -184,6 +209,7 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
       videoEngine: options.videoEngine ?? null,
       needsFfmpeg: options.needsFfmpeg ?? "install ffmpeg",
       presetOverrides: options.presetOverrides,
+      policy,
       cache: analysisCache,
     });
   }
@@ -276,10 +302,13 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     ...(options.onVideoItemDone ? { onVideoItemDone: options.onVideoItemDone } : {}),
   });
 
-  const updated = updateManifest(manifest, finalPlan, result, {
-    bytecut: options.toolVersion,
-    ...engine.versions(),
-  });
+  const updated = updateManifest(
+    manifest,
+    finalPlan,
+    result,
+    { bytecut: options.toolVersion, ...engine.versions() },
+    policy.catalog,
+  );
 
   const placeholdersChanged = await refreshPlaceholders(updated, finalPlan, {
     kind: options.placeholder ?? "dominant-color",

@@ -4,7 +4,8 @@ import { classifyVideo } from "../classify/video.js";
 import { BytecutError } from "../errors.js";
 import { sha256File } from "../hash.js";
 import { toPosix } from "../posix.js";
-import { getVideoPreset, GIF_TO_VIDEO_PRESET, type VideoPreset } from "../presets/video.js";
+import { BUILTIN_POLICY, type PresetPolicy } from "../presets/catalog.js";
+import { getVideoPreset, type VideoPreset } from "../presets/video.js";
 import { outputWidth } from "../video/args.js";
 import type { VideoProbe } from "../video/probe.js";
 import type { VideoEngine } from "../video/types.js";
@@ -22,6 +23,8 @@ export interface BuildVideoPlanOptions {
   needsFfmpeg: string;
   /** Per-file preset override by source path. */
   presetOverrides?: Record<string, string>;
+  /** Presets from the config; absent means the built-ins and the classifier. */
+  policy?: PresetPolicy;
   /** Output paths already claimed by image items, to detect collisions. */
   claimed?: Set<string>;
   /** Lets callers cache probes by content hash. Defaults to `engine.probe`. */
@@ -135,19 +138,28 @@ export async function buildVideoItems(options: BuildVideoPlanOptions): Promise<V
       videoCodec: probe.videoCodec,
     };
 
+    const policy = options.policy ?? BUILTIN_POLICY;
     const override = options.presetOverrides?.[source];
-    const forced = override ? getVideoPreset(override) : undefined;
+    const forced = override ? getVideoPreset(override, policy.catalog) : undefined;
+    const matched = policy.assetFor(source);
+    const byAssets = matched ? getVideoPreset(matched.preset, policy.catalog) : undefined;
     let preset: VideoPreset;
     let why: { reason: string; confidence?: "high" | "medium" | "low" };
     if (forced) {
       preset = forced;
       why = { reason: `set to ${forced.name} for this file` };
+    } else if (byAssets && matched) {
+      preset = byAssets;
+      why = {
+        reason: `set to ${byAssets.name} by assets "${matched.pattern}"`,
+        confidence: "high",
+      };
     } else if (posix.extname(source).toLowerCase() === ".gif") {
-      preset = GIF_TO_VIDEO_PRESET;
+      preset = getVideoPreset("gif-to-video", policy.catalog)!;
       why = { reason: "animated GIF", confidence: "high" };
     } else {
       const verdict = classifyVideo(source, probe);
-      preset = getVideoPreset(verdict.preset)!;
+      preset = getVideoPreset(verdict.preset, policy.catalog)!;
       why = { reason: verdict.reason, confidence: verdict.confidence };
     }
 

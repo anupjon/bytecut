@@ -4,6 +4,7 @@ import {
   initialState,
   reducer,
   rowAt,
+  unsavedChoices,
   effectivePreset,
   type Action,
   type State,
@@ -270,5 +271,72 @@ describe("snippet overlay and results cursor", () => {
     s = run(s, { type: "done-move", delta: 1, max: 2 });
     s = run(s, { type: "run-done", result: { items: [], cancelled: false, warnings: [] } });
     expect(s.doneCursor).toBe(0);
+  });
+});
+
+describe("saving choices", () => {
+  const withPreset = () =>
+    run(
+      abc(),
+      { type: "cycle-preset", sources: ["a.jpg"], to: "icon" },
+      {
+        type: "set-out-dir",
+        outDir: "elsewhere",
+      },
+    );
+
+  it("offers only what differs from the config", () => {
+    expect(unsavedChoices(abc())).toEqual({});
+    expect(unsavedChoices(withPreset())).toEqual({
+      outDir: "elsewhere",
+      presets: { "a.jpg": "icon" },
+    });
+  });
+
+  it("a choice already in the config is not offered again", () => {
+    const s = { ...withPreset(), baseline: { presets: { "a.jpg": "icon" }, outDir: "elsewhere" } };
+    expect(unsavedChoices(s)).toEqual({});
+  });
+
+  it("changing a saved choice offers the new value", () => {
+    const s = {
+      ...withPreset(),
+      baseline: { presets: { "a.jpg": "hero" }, outDir: "elsewhere" },
+    };
+    expect(unsavedChoices(s)).toEqual({ presets: { "a.jpg": "icon" } });
+  });
+
+  it("opens the prompt, records the outcome, and only a write moves the baseline", () => {
+    const opened = reducer(withPreset(), {
+      type: "save-open",
+      choices: unsavedChoices(withPreset()),
+    });
+    expect(opened.overlay).toBe("save");
+    expect(opened.save?.outcome).toBeNull();
+
+    const refused = reducer(opened, {
+      type: "save-result",
+      outcome: { kind: "manual", file: "bytecut.config.ts", snippet: "…" },
+    });
+    expect(refused.baseline).toEqual(opened.baseline);
+    expect(unsavedChoices(refused)).not.toEqual({});
+
+    const written = reducer(opened, {
+      type: "save-result",
+      outcome: { kind: "written", file: "bytecut.config.json", created: true },
+    });
+    expect(unsavedChoices(written)).toEqual({});
+  });
+
+  it("cycles through the config's presets, not only the built-ins", () => {
+    const s = reducer(
+      reducer(initialState("out", ["photo", "hero", "thumbs"]), {
+        type: "scan-done",
+        model: model([row("a.jpg", { preset: "hero" })]),
+        files: ["a.jpg"],
+      }),
+      { type: "cycle-preset" },
+    );
+    expect(s.presets).toEqual({ "a.jpg": "thumbs" });
   });
 });

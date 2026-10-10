@@ -5,6 +5,7 @@ import { svgoEngine } from "../../core/engines/svg.js";
 import { guarded } from "../errors.js";
 import { formatAuditReport } from "../format.js";
 import {
+  configArg,
   createVideoEngine,
   discover,
   ffmpegInstallText,
@@ -18,6 +19,7 @@ export default defineCommand({
     description: "Report what is too heavy in your image assets, with estimated savings",
   },
   args: {
+    ...configArg,
     json: { type: "boolean", description: "Print the report as JSON" },
     all: { type: "boolean", description: "Show every finding instead of the first 10 per rule" },
     "out-dir": {
@@ -37,7 +39,8 @@ export default defineCommand({
     },
   },
   run: guarded(async ({ args }) => {
-    const found = await discover(args._.map(String), args["out-dir"]);
+    const found = await discover(args._.map(String), args["out-dir"], args.config);
+    const { config } = found;
     if (found.scanInputs.length === 0) {
       console.error(noAssetsMessage("audit", found.project));
       process.exitCode = 2;
@@ -51,8 +54,13 @@ export default defineCommand({
       inputs: found.scanInputs,
       outDir: found.outDir,
       staticRoot: found.project.staticRoot,
-      ffmpeg: ffmpegStatus(),
-      videoEngine: createVideoEngine({ ffmpeg: args.ffmpeg, ffprobe: args.ffprobe }),
+      ffmpeg: ffmpegStatus(config),
+      videoEngine: createVideoEngine({ ffmpeg: args.ffmpeg, ffprobe: args.ffprobe }, config),
+      policy: config.policy,
+      exclude: config.exclude,
+      ignore: config.auditIgnore,
+      settings: config.rules,
+      budgets: config.budgets,
       needsFfmpeg: ffmpegInstallText(),
       persistCache: args.cache !== false,
     });

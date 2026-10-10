@@ -21,6 +21,11 @@ export const COMMANDS: CommandInfo[] = [
     usage: "/snippet @file",
     description: "Copy the <picture>/<video> markup for an optimized file",
   },
+  {
+    name: "save",
+    usage: "/save",
+    description: "Keep this session's preset and folder choices in the project config",
+  },
   { name: "out", usage: "/out <dir>", description: "Change the output folder" },
   { name: "select", usage: "/select <all|none|warn>", description: "Change the selection" },
   { name: "doctor", usage: "/doctor", description: "Show Node, sharp and ffmpeg status" },

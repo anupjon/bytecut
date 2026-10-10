@@ -11,7 +11,8 @@
 | M4 TUI                              | Complete locally; CI not yet run |
 | M5 Video                            | Complete locally; CI not yet run |
 | M6 Web outputs                      | Complete locally; CI not yet run |
-| M7 – M9                             | Not started                      |
+| M7 Config                           | Complete locally; CI not yet run |
+| M8 – M9                             | Not started                      |
 
 ## M0 — what changed
 
@@ -208,11 +209,60 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
   the results screen. The clipboard uses a native tool if present, else OSC 52, and always shows the
   markup so a failed copy is never a dead end.
 
+## M7 — what changed
+
+- **Config loader** (`src/core/config/`): `bytecut.config.{ts,mts,js,mjs,json,toml}` in the project
+  root, or `--config <path>` on every project command. No config behaves exactly like an empty one
+  (tested: `{}` in JSON, TOML and JS produce the same `--dry-run --json` plan as no file). More than
+  one file is an error. `.ts` is loaded by Node's own type stripping (no dependency); TOML uses the new
+  `smol-toml` dependency.
+- **Schema** (zod, strict): `include`, `exclude`, `outDir`, `publicPath`, `framework`, `assets`,
+  `presets`, `audit.rules`, `audit.ignore`, `budgets`, `manifest.placeholder`, `concurrency`,
+  `ffmpegPath`, `ffprobePath`. One error lists every problem with its path, suggests the intended key
+  for a typo (including rule ids) and never prints a stack. `ssimulacra2`, `vmaf`, `raw` and
+  `ssimulacra2Path` are rejected with "arrives in M9" rather than accepted and ignored.
+- **Presets**: `extends` chains (any order, cycles reported), overrides for widths, formats, quality,
+  effort, lossless and priority (images) and audio, maxWidth, maxFps, codecs and crf (video). A preset
+  named like a built-in without `extends` changes that built-in. `target` maps to fixed numbers: AVIF
+  45/60/75, WebP 65/78/88 for low/balanced/high, `lossless` forces lossless; video CRF is offset +4/0/-4.
+- **Precedence** (low to high): classifier, `assets` rule (first match wins, glob against the project
+  relative path; a pattern without `/` matches the name at any depth), `--preset`, a per-file choice.
+  Flags beat config beat detection for `--out-dir`, `--public-path`, `--placeholder` and the ffmpeg paths.
+- **`bytecut explain <file…>`**: which layer decided, the preset chain and what the config changed, the
+  resolved settings and the output paths. Read-only. `--preset` shows what a flag would do; `--json`.
+- **`bytecut init`**: writes `bytecut.config.json` with only values that differ from detection (`{}` if
+  none), refuses if any config exists, never touches `.gitignore`, and says so if `outDir` is ignored.
+- **TUI "save these choices?"**: after a run that used per-file presets or a changed output folder the
+  config does not already hold, a prompt lists them (y/Enter saves, n/Esc not now); `s` on the results
+  screen and `/save` ask again. JSON (or no config) is written; a TOML or TS config is never rewritten,
+  the lines to add are shown instead. A declined question is not repeated for identical choices.
+- **Wiring**: `audit.rules` and `budgets` now reach the audit (so `project/over-budget` fires),
+  `exclude` applies to directory scans, `audit.ignore` drops findings and files from the audit,
+  `framework` replaces detection, `concurrency` sets image concurrency, `ffmpegPath`/`ffprobePath`
+  sit between the env var and PATH in resolution (doctor shows `config` as the source).
+- **`doctor`** reports the config in use (or the problem with it, rather than refusing to diagnose),
+  the framework, and whether `outDir` is matched by a `.gitignore`.
+- **Guardrails**: the config file is the one write outside `outDir` (§6.2); `writeConfigFile` in
+  `fs-safe.ts` accepts only the known config names in the project root, refuses symlinks and is atomic.
+
 ## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
-- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 736 tests in 55 files
-  (~130 s; M5 was ~110 s). The only failure in the full run was an M4 test pinning the exact usage
-  line, which now correctly lists `snippet`; fixed and re-run alone.
+- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 884 tests in 67 files
+  (~150 s; M6 was ~130 s). Two existing tests changed for M7 and say why: the usage-line test pinned
+  the exact command list (now checks that the original commands are still present), and the real
+  session test now meets the save prompt after a run that changed a preset.
+- **M7 mutation checks** (each asserted as applied, 13 of 13 caught): last match wins instead of first,
+  new rules appended instead of prepended, assets beating a per-file choice, `--preset` losing to
+  assets, writer accepting any file name, schema not strict, `exclude` ignored, `audit.ignore` ignored,
+  `init` writing defaults, the save prompt ignoring what the config holds, video target sign flipped,
+  TOML/TS configs rewritten, and file names not glob-escaped. One was not caught at first (assets
+  vs per-file choice); a precedence test was added and the mutation then failed as it should.
+- **Round trip**: TUI choices (per-file presets, output folder) → written `bytecut.config.json` →
+  the same executable plan with no overrides (compared without the human-readable reason), and a run
+  made with the overrides is a full cache hit under the saved config.
+- **Real Node type stripping** is exercised against the built bundle (`tsup` into a temp folder inside
+  the repo): a `.ts` config with type annotations loads and prints no experimental warning; an
+  `enum` config is reported with a readable error.
 - **Generated JSX is type-checked with the real `tsc`** against `@types/react` in a sample component
   (every snippet kind, every placeholder style, an alt text needing escapes). Negative controls prove
   it can fail: `class`, lowercase `fetchpriority`/`srcset`, an HTML string `style` and `autoplay`
@@ -230,7 +280,9 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
 
 ## Decisions
 
-See "Decisions log" in AGENTS.md. M6 additions: dominant colour by default; in-house BlurHash with the
+See "Decisions log" in AGENTS.md. M7 additions: Node type stripping for `.ts`; `smol-toml`; `init` and
+saves write JSON and never rewrite TS/TOML; perceptual-search fields rejected until M9; fixed `target`
+mapping. M6 additions: dominant colour by default; in-house BlurHash with the
 absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather than `next/image`.
 
 ## Known issues
@@ -254,13 +306,30 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
   (the markup is still shown). Windows `clip` mishandles some non-ASCII text.
 - **An older bytecut cannot read a manifest written by this one** if it contains the new optional
   fields (the schema is strict); there is no published older release, so this only affects local builds.
-- **Priority comes from the preset or `--priority`** per run; a persistent per-file choice needs the
-  M7 config. SVGs have no snippet (SVG output is still unimplemented and unowned).
+- **Priority comes from the preset or `--priority`** per run; a persistent choice is now possible by
+  assigning a preset with `priority: true` to a file. SVGs have no snippet (SVG output is still
+  unimplemented and unowned).
+- **`.ts` configs need a Node with type stripping** (verified on Node 23.8 only; I believe 22.18+).
+  On an older 22.x the error says so and JSON/TOML still work. A `.ts` config is executed, like a
+  `vite.config.ts`: it can run anything, and there is no sandbox.
+- **No `defineConfig` and no published types.** Importing `bytecut` from a config would fail under
+  `npx` (it is not installed in the project), so the config is a plain default-exported object and
+  `import type` would have nothing to import yet. Types are a packaging decision left open.
+- **`audit.ignore` only affects the audit**: `bytecut optimize` with no paths still processes those
+  files; use `exclude` to keep files out of scans entirely. `exclude` does not veto a file named
+  explicitly, as with `.gitignore`.
+- **Config is found in the working directory only** (as detection already is); no walking upwards.
+- **`concurrency` is image concurrency**; video stays at 1. `framework` replaces the detected
+  framework but not React detection, which still reads `package.json`.
+- **The TUI `p` key cycles image presets** (built-ins plus the config's). Video presets are chosen by
+  the classifier or an `assets` rule; there is no per-file video preset key.
+- **`explain` for a video needs ffprobe**, and says so when it is missing instead of guessing.
+- **Saving cannot update a TS or TOML config** by design (TOML comments would be lost, TS is code):
+  it prints the lines to add. A saved per-file rule is an exact path with glob characters escaped.
 - **Carried over**: `--json` dry-run only; no `--prune`; no locking; `.gitignore` coverage partial;
   detection cwd-only; CI, macOS/Windows and a real SIGINT unverified.
 
 ## Next
 
-M7 — config: loader for `.ts`/`.json`/`.toml`, zod schema, `explain`, `init`, and the "save these
-choices?" prompt that finally persists preset overrides and the placeholder setting. Needs a
-confirmed plan first (§10).
+M8 — CI mode: `bytecut check` (exit non-zero on any `error`, including `project/over-budget`, which
+M7 now feeds), `--changed [base]`, and `--report md|json`. Needs a confirmed plan first (§10).

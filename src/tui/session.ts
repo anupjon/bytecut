@@ -20,14 +20,28 @@ import { MANIFEST_FILE } from "../core/manifest/types.js";
 import { buildSnippet, originalUrl, snippetFormatFor } from "../core/snippets/index.js";
 import { readFile } from "node:fs/promises";
 import type { ProjectInfo } from "../core/scan/detect.js";
+import {
+  applyChoices,
+  canRewrite,
+  isEmpty,
+  renderChoicesSnippet,
+  renderConfig,
+} from "../core/config/choices.js";
+import type { Choices } from "../core/config/choices.js";
+import { loadConfig } from "../core/config/load.js";
+import { resolveConfig, resolveConfigData, type ResolvedConfig } from "../core/config/resolve.js";
+import { parseConfig } from "../core/config/schema.js";
+import { writeConfigFile } from "../core/fs-safe.js";
 import { buildModel, type Model } from "./model.js";
-import type { Review, ReviewItem } from "./state.js";
+import type { Review, ReviewItem, SaveOutcome } from "./state.js";
 
 export interface SessionOptions {
   projectRoot: string;
   engine: ImageEngine;
   svgEngine: SvgEngine;
   project: ProjectInfo;
+  /** The merged config; absent means zero-config for `project`. */
+  config?: ResolvedConfig;
   /** Paths scanned, relative to the project root. */
   inputs: string[];
   toolVersion: string;
@@ -68,12 +82,19 @@ export interface Session {
     source: string,
     outDir: string,
   ): Promise<{ code: string; hints: string[] } | { error: string }>;
+  /**
+   * Makes choices permanent. A JSON (or missing) config is written; a TOML or TS config is
+   * code the user owns, so it is left alone and the lines to add are returned instead.
+   */
+  saveChoices(choices: Choices): Promise<SaveOutcome>;
   /** Null when `outDir` is acceptable, otherwise the reason it is not (§6.5). */
   validateOutDir(outDir: string, sources: string[]): Promise<string | null>;
 }
 
 export function createSession(options: SessionOptions): Session {
-  const { projectRoot, engine, project } = options;
+  const { projectRoot, engine } = options;
+  // Replaced after a save, so the next scan sees what was just written.
+  let config = options.config ?? resolveConfigData({}, options.project, null);
   const common = (outDir: string) => ({
     projectRoot,
     engine,
@@ -81,8 +102,11 @@ export function createSession(options: SessionOptions): Session {
     videoEngine: options.videoEngine ?? null,
     ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
     outDir,
-    staticRoot: project.staticRoot,
-    publicPath: project.publicPath,
+    staticRoot: config.project.staticRoot,
+    publicPath: config.project.publicPath,
+    policy: config.policy,
+    exclude: config.exclude,
+    ...(config.placeholder ? { placeholder: config.placeholder } : {}),
   });
 
   return {
@@ -93,7 +117,12 @@ export function createSession(options: SessionOptions): Session {
         svgEngine: options.svgEngine,
         inputs: options.inputs,
         outDir,
-        staticRoot: project.staticRoot,
+        staticRoot: config.project.staticRoot,
+        policy: config.policy,
+        exclude: config.exclude,
+        ignore: config.auditIgnore,
+        settings: config.rules,
+        budgets: config.budgets,
         ffmpeg: options.ffmpeg,
         videoEngine: options.videoEngine ?? null,
         ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
@@ -167,7 +196,7 @@ export function createSession(options: SessionOptions): Session {
         presetOverrides: presets,
         execute: true,
         signal,
-        concurrency: options.concurrency ?? 2,
+        concurrency: options.concurrency ?? config.concurrency ?? 2,
         onItemStart: handlers.onItemStart,
         onOutputDone: handlers.onOutput,
         onItemDone: (result) => handlers.onItemDone(result),
@@ -192,11 +221,34 @@ export function createSession(options: SessionOptions): Session {
       const manifest = parseManifest(text);
       const built = buildSnippet(
         manifest,
-        { source, originalUrl: originalUrl(source, project.staticRoot) },
-        { format: snippetFormatFor(project) },
+        { source, originalUrl: originalUrl(source, config.project.staticRoot) },
+        { format: snippetFormatFor(config.project) },
       );
       if (!built) return { error: `${source} has not been optimized yet.` };
       return { code: built.code, hints: built.hints };
+    },
+
+    async saveChoices(choices) {
+      if (isEmpty(choices)) return { kind: "nothing" };
+      try {
+        const loaded = await loadConfig(projectRoot);
+        if (loaded && !canRewrite(loaded.format)) {
+          return {
+            kind: "manual",
+            file: loaded.name,
+            snippet: renderChoicesSnippet(loaded.format, choices),
+          };
+        }
+        const next = applyChoices(loaded?.raw ?? {}, choices);
+        const file = loaded?.name ?? "bytecut.config.json";
+        // Never write something the loader would then refuse.
+        parseConfig(next, file);
+        await writeConfigFile(projectRoot, file, renderConfig("json", next));
+        config = await resolveConfig(projectRoot, await loadConfig(projectRoot));
+        return { kind: "written", file, created: loaded === null };
+      } catch (error) {
+        return { kind: "error", message: error instanceof Error ? error.message : String(error) };
+      }
     },
 
     async validateOutDir(outDir, sources) {

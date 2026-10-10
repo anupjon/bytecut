@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { installHint, resolveBinary } from "../core/ffmpeg/index.js";
-import { detectProject, type ProjectInfo } from "../core/scan/detect.js";
+import { loadConfig } from "../core/config/load.js";
+import { resolveConfig, type ResolvedConfig } from "../core/config/resolve.js";
+import type { ProjectInfo } from "../core/scan/detect.js";
 import { createFfmpegVideoEngine } from "../core/video/ffmpeg-engine.js";
 import type { VideoEngine } from "../core/video/types.js";
 import { isFile, readOsReleaseId, run } from "./system.js";
@@ -13,21 +15,39 @@ export interface Discovery {
   scanInputs: string[];
   /** Output folder, relative to the project root. */
   outDir: string;
+  /** The config merged over detection; `project` is already this with config applied. */
+  config: ResolvedConfig;
 }
+
+/** The `--config <path>` flag every project command accepts. */
+export const configArg = {
+  config: {
+    type: "string",
+    description: "Path to a config file (default: bytecut.config.{ts,js,json,toml} in the project)",
+  },
+} as const;
 
 /** Zero-config discovery shared by every command: framework, folders to scan, output folder. */
-export async function discover(inputs: string[], outDirArg?: string): Promise<Discovery> {
+export async function discover(
+  inputs: string[],
+  outDirArg?: string,
+  configPath?: string,
+): Promise<Discovery> {
   const projectRoot = process.cwd();
-  const project = await detectProject(projectRoot);
+  const config = await resolveConfig(projectRoot, await loadConfig(projectRoot, configPath));
+  const { project } = config;
   const scanInputs =
     inputs.length > 0 ? inputs : project.include.filter((p) => existsSync(resolve(projectRoot, p)));
-  return { projectRoot, project, scanInputs, outDir: outDirArg ?? project.outDir };
+  return { projectRoot, project, scanInputs, outDir: outDirArg ?? project.outDir, config };
 }
 
-export function ffmpegStatus(): { found: boolean; installHint: string } {
+export function ffmpegStatus(config?: { ffmpegPath?: string | undefined }): {
+  found: boolean;
+  installHint: string;
+} {
   const resolved = resolveBinary(
     "ffmpeg",
-    { env: process.env, platform: process.platform },
+    { env: process.env, platform: process.platform, config: config?.ffmpegPath },
     { isFile },
   );
   return { found: resolved.found, installHint: installHint(process.platform, readOsReleaseId()) };
@@ -43,10 +63,13 @@ export function noAssetsMessage(command: string, project: ProjectInfo): string {
  */
 export function createVideoEngine(
   flags: { ffmpeg?: string | undefined; ffprobe?: string | undefined } = {},
+  config: { ffmpegPath?: string | undefined; ffprobePath?: string | undefined } = {},
 ): VideoEngine {
   return createFfmpegVideoEngine({
     ffmpegFlag: flags.ffmpeg,
     ffprobeFlag: flags.ffprobe,
+    ffmpegConfig: config.ffmpegPath,
+    ffprobeConfig: config.ffprobePath,
     env: process.env,
     platform: process.platform,
     deps: { isFile },

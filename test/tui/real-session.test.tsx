@@ -195,6 +195,11 @@ describe("TUI against the real session", () => {
     await current.waitFor((f) => f.includes("Review:"), "the review", 15_000);
     await current.press(KEY.enter);
     await current.waitFor((f) => f.includes("Done"), "the results", 30_000);
+    // The preset change is news to the config, so the run ends with the save question.
+    await current.waitFor((f) => f.includes("Save these choices"), "the save prompt");
+    await current.press("n");
+    await current.waitFor((f) => !f.includes("Save these choices"), "the prompt to close");
+    expect(await listFiles(root)).not.toContain("bytecut.config.json");
     await current.press(KEY.enter);
     await current.waitFor(
       (f) => f.includes("already optimized") || f.includes("Nothing to optimize"),
