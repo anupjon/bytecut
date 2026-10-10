@@ -1,0 +1,8 @@
+ssimulacra2.wasm is built from the Rust crate `ssimulacra2` 0.5.1
+(https://github.com/rust-av/ssimulacra2), licensed BSD-2-Clause, "Copyright (c) 2022-2022,
+the rav1e contributors", together with its dependencies resolved in rust/Cargo.lock (yuvxyb,
+v_frame, num-*, thiserror, and the wasm-bindgen runtime stubs they link). Their licences are
+permissive (MIT, Apache-2.0, BSD-2-Clause); `cargo tree` and `rust/Cargo.lock` list them.
+
+The metric itself is SSIMULACRA 2 by Jon Sneyers and Cloudinary
+(https://github.com/cloudinary/ssimulacra2).

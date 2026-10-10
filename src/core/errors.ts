@@ -15,6 +15,7 @@ export type BytecutErrorCode =
   | "CONFIG_INVALID"
   | "CONFIG_EXISTS"
   | "GIT_UNAVAILABLE"
+  | "SCORER_UNAVAILABLE"
   | "BAD_ARGUMENTS";
 
 /** Expected, user-facing failure. The CLI layer prints `message` without a stack trace. */

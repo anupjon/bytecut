@@ -30,6 +30,9 @@ export interface DoctorOptions {
   /** Wired up in M7 when the config loader exists. */
   ffmpegConfig?: string | undefined;
   ffprobeConfig?: string | undefined;
+  /** `--ssimulacra2` and `ssimulacra2Path`: an optional native scorer. */
+  ssimulacra2Flag?: string | undefined;
+  ssimulacra2Config?: string | undefined;
 }
 
 export interface ProjectReport {
@@ -55,6 +58,11 @@ export interface DoctorReport {
   sharp: { available: boolean; version?: string; libvips?: string; error?: string };
   ffmpeg: BinaryReport & { info?: BinaryInfo };
   ffprobe: BinaryReport;
+  /**
+   * The quality scorer used by perceptual searches: a native `ssimulacra2` when one is found,
+   * otherwise the built-in WebAssembly one, which is always there.
+   */
+  scorer: { kind: "native" | "wasm"; resolved: ResolvedBinary };
   encoders: { av1: "libsvtav1" | "libaom-av1" | null; h264: boolean; vp9: boolean; vmaf: boolean };
   /** The project and its config, when doctor is run for one (filled in by the CLI). */
   project?: ProjectReport;
@@ -118,6 +126,17 @@ export async function collectDoctorReport(
     }
   }
 
+  const scorerResolved = resolveBinary(
+    "ssimulacra2",
+    {
+      env: deps.env,
+      platform: deps.platform,
+      flag: options.ssimulacra2Flag,
+      config: options.ssimulacra2Config,
+    },
+    deps,
+  );
+
   const caps = ffmpeg.info?.capabilities;
   const encoders = {
     av1: caps ? pickAv1Encoder(caps) : null,
@@ -164,6 +183,7 @@ export async function collectDoctorReport(
     sharp,
     ffmpeg,
     ffprobe,
+    scorer: { kind: scorerResolved.found ? "native" : "wasm", resolved: scorerResolved },
     encoders,
     degradations,
     ok: node.supported && sharp.available,
@@ -173,9 +193,9 @@ export async function collectDoctorReport(
 function sourceLabel(source: BinarySource | null): string {
   switch (source) {
     case "flag":
-      return "--ffmpeg/--ffprobe flag";
+      return "flag";
     case "env":
-      return "BYTECUT_FFMPEG/BYTECUT_FFPROBE";
+      return "environment variable";
     case "config":
       return "config";
     case "ffmpeg-dir":
@@ -216,6 +236,16 @@ export function formatDoctorReport(report: DoctorReport): string {
   );
   lines.push(binaryLine("ffmpeg ", report.ffmpeg));
   lines.push(binaryLine("ffprobe", report.ffprobe));
+  {
+    const { kind, resolved } = report.scorer;
+    lines.push(
+      kind === "native" && resolved.found
+        ? `scorer:  native ssimulacra2 at ${resolved.path} (${sourceLabel(resolved.source)})`
+        : resolved.found === false && resolved.attempted
+          ? `scorer:  built-in WebAssembly (no ssimulacra2 at ${resolved.attempted}, from ${sourceLabel(resolved.source)})`
+          : "scorer:  built-in WebAssembly SSIMULACRA2 (no native ssimulacra2 needed)",
+    );
+  }
 
   if (report.ffmpeg.info) {
     lines.push("", "Encoders:");

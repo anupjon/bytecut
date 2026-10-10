@@ -181,6 +181,21 @@ export class SafeFs {
     await rename(tempPath, target);
   }
 
+  /**
+   * Writes `data` to a reserved temp path and returns it, for handing a file to a child
+   * process (a native scorer). It is never an output: `discardTemp` removes it.
+   */
+  async writeTemp(relativePosixPath: string, data: Uint8Array): Promise<string> {
+    const temp = await this.reserveTemp(relativePosixPath);
+    try {
+      await writeFile(temp, data, { flag: "wx" });
+    } catch (error) {
+      await unlink(temp).catch(() => undefined);
+      throw error;
+    }
+    return temp;
+  }
+
   /** Removes a reserved temp file (after a failure or cancel). Never throws. */
   async discardTemp(tempPath: string): Promise<void> {
     if (!isInside(this.outDir, tempPath) || !basename(tempPath).endsWith(".tmp")) return;

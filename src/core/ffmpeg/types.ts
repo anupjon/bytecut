@@ -1,4 +1,4 @@
-export type BinaryName = "ffmpeg" | "ffprobe";
+export type BinaryName = "ffmpeg" | "ffprobe" | "ssimulacra2";
 
 /** Where a binary path came from, in resolution order (§4 "ffmpeg sourcing"). */
 export type BinarySource = "flag" | "env" | "config" | "ffmpeg-dir" | "path";

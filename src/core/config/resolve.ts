@@ -39,6 +39,7 @@ export interface ResolvedConfig {
   concurrency: number | undefined;
   ffmpegPath: string | undefined;
   ffprobePath: string | undefined;
+  ssimulacra2Path: string | undefined;
 }
 
 export function resolveConfigData(
@@ -101,6 +102,7 @@ export function resolveConfigData(
     concurrency: config.concurrency,
     ffmpegPath: config.ffmpegPath,
     ffprobePath: config.ffprobePath,
+    ssimulacra2Path: config.ssimulacra2Path,
   };
 }
 

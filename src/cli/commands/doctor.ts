@@ -21,6 +21,10 @@ export default defineCommand({
     },
     ffmpeg: { type: "string", description: "Path to the ffmpeg binary" },
     ffprobe: { type: "string", description: "Path to the ffprobe binary" },
+    ssimulacra2: {
+      type: "string",
+      description: "Path to a native ssimulacra2 (optional; a WebAssembly scorer is built in)",
+    },
     json: { type: "boolean", description: "Print the report as JSON" },
   },
   run: guarded(async ({ args }) => {
@@ -40,6 +44,8 @@ export default defineCommand({
       ffprobeFlag: args.ffprobe,
       ffmpegConfig: resolved.ffmpegPath,
       ffprobeConfig: resolved.ffprobePath,
+      ssimulacra2Flag: args.ssimulacra2,
+      ssimulacra2Config: resolved.ssimulacra2Path,
     });
     report.project = {
       framework: resolved.project.framework,

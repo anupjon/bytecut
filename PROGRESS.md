@@ -2,18 +2,18 @@
 
 ## Status
 
-| Milestone                           | Status                           |
-| ----------------------------------- | -------------------------------- |
-| M0 Scaffold                         | Complete locally; CI not yet run |
-| M1 Image engine + headless optimize | Complete locally; CI not yet run |
-| M2 Plan, manifest, cache            | Complete locally; CI not yet run |
-| M3 Scanner, classifier, audit       | Complete locally; CI not yet run |
-| M4 TUI                              | Complete locally; CI not yet run |
-| M5 Video                            | Complete locally; CI not yet run |
-| M6 Web outputs                      | Complete locally; CI not yet run |
-| M7 Config                           | Complete locally; CI not yet run |
-| M8 CI mode                          | Complete locally; CI not yet run |
-| M9 Quality targets & compare        | Not started                      |
+| Milestone                           | Status                                              |
+| ----------------------------------- | --------------------------------------------------- |
+| M0 Scaffold                         | Complete locally; CI not yet run                    |
+| M1 Image engine + headless optimize | Complete locally; CI not yet run                    |
+| M2 Plan, manifest, cache            | Complete locally; CI not yet run                    |
+| M3 Scanner, classifier, audit       | Complete locally; CI not yet run                    |
+| M4 TUI                              | Complete locally; CI not yet run                    |
+| M5 Video                            | Complete locally; CI not yet run                    |
+| M6 Web outputs                      | Complete locally; CI not yet run                    |
+| M7 Config                           | Complete locally; CI not yet run                    |
+| M8 CI mode                          | Complete locally; CI not yet run                    |
+| M9 Quality targets & compare        | In progress: stage 1 of 3 (scorer) complete locally |
 
 ## M0 — what changed
 
@@ -278,6 +278,35 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
   - run: npx bytecut check --changed origin/main --fail-on warn --report md > bytecut-report.md
   ```
 
+## M9 — stage 1 of 3: the scorer (what changed)
+
+Stages 2 (image search + `maxSize`) and 3 (video, `vmaf`, `/compare`) are not started; stage 1 was a
+go/no-go gate and it passed.
+
+- **`packages/ssimulacra2` (`@bytecut/ssimulacra2`)**: a pnpm workspace package. The Rust crate
+  `rust-av/ssimulacra2` 0.5.1 (**BSD-2-Clause**; notice kept in `LICENSE`/`NOTICE`) compiled to a
+  62 KB `.wasm`, pinned by `rust/Cargo.lock`. The `.wasm` is **committed**, so installing, testing and
+  CI never need Rust; `pnpm --filter @bytecut/ssimulacra2 build:wasm` rebuilds it
+  (`rustup target add wasm32-unknown-unknown`). `rayon` is off; parallelism is a pool of
+  `worker_threads`, each with its own instance. The crate drags in the wasm-bindgen runtime through a
+  dependency; its three imports are stubbed to throw if ever reached (none is reachable from the
+  exports). Loaded lazily, only when a search runs.
+- **Reference agreement**: 16 fixture pairs (two images × eight distortions: JPEG q20/50/85, WebP,
+  AVIF, blur, noise, colour shift), scored by libjxl's `tools/ssimulacra2` (the Cloudinary C++
+  reference, commit `ef67fde`, built from source) and by the WASM. **Largest difference 0.032** on the
+  0..100 scale; typical 0.004. The test tolerance is 0.1. Golden values are in
+  `test/fixtures/ssimulacra2/reference-scores.json`; the 18 PNG fixtures are committed because the
+  numbers depend on their exact pixels.
+- **Native scorer**: `--ssimulacra2` → `BYTECUT_SSIMULACRA2` → `ssimulacra2Path` → PATH, resolved like
+  ffmpeg; WASM is the default and the fallback. An explicitly named path that is missing is reported
+  and falls back to WASM, never to a different binary on PATH. Candidates are written to temp files
+  inside `outDir` through `SafeFs.writeTemp` and removed. `doctor` shows which scorer will be used.
+  `ssimulacra2Path` is accepted in config; `ssimulacra2`, `vmaf` and `raw` are still rejected until
+  stages 2 and 3.
+- **Cost** (single thread, WASM, photographic content): 512x512 in 0.4 s; 1280x720 1.3 s; 1920x1080
+  1.6 s (~450 MB RSS); 2560x1440 2.6 s (~740 MB RSS). A search step on a 512 px crop is therefore
+  cheap, and scoring one full-size 2560 px output is affordable.
+
 ## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
 - `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 924 tests in 71 files
@@ -292,6 +321,9 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
   `init` writing defaults, the save prompt ignoring what the config holds, video target sign flipped,
   TOML/TS configs rewritten, and file names not glob-escaped. One was not caught at first (assets
   vs per-file choice); a precedence test was added and the mutation then failed as it should.
+- **M9 stage 1**: 959 tests pass, 1 skipped (the comparison against a native tool, which needs
+  `BYTECUT_TEST_SSIMULACRA2=<path to ssimulacra2>`; run by hand here against the built reference
+  tool and passed). `pnpm typecheck`, `pnpm lint` and `pnpm build` pass.
 - **M8 checks**: exit codes 0/1/2 are tested through the real CLI; `--changed` is tested in real
   temporary git repositories (untracked, modified, staged, deleted, a base branch that moved on,
   a project in a subfolder of the repository, a config change, a shallow clone, no git, a bad ref).
@@ -368,6 +400,13 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
 - **A project with no media passes** (`Scanned 0 images`); a wrong working directory therefore also
   passes. Only a missing asset folder is exit 2.
 - **Submodules and paths outside the project folder** are not considered by `--changed`.
+- **A native scorer can pick a different quality than WASM** once searches exist: scores differ by
+  up to ~0.03, so a threshold crossing can land one step apart. Stage 2 records which scorer ran
+  in the manifest and keeps it out of cache validity so runs do not ping-pong between machines.
+- **The WASM binary is a build artifact in git** (62 KB). Review a rebuild by comparing the sha256
+  `build-wasm.sh` prints and the pinned `Cargo.lock`; there is no reproducible-build check yet.
+- **`@bytecut/ssimulacra2` is not published**, and the `@bytecut` npm scope must be yours first (not
+  verifiable from here). Until it is published, `bytecut` resolves it through the workspace only.
 - **Config is found in the working directory only** (as detection already is); no walking upwards.
 - **`concurrency` is image concurrency**; video stays at 1. `framework` replaces the detected
   framework but not React detection, which still reads `package.json`.

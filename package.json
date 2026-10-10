@@ -23,6 +23,7 @@
     "fixtures": "tsx scripts/make-fixtures.ts"
   },
   "dependencies": {
+    "@bytecut/ssimulacra2": "workspace:*",
     "citty": "^0.2.2",
     "ignore": "^7.0.12",
     "ink": "^8.0.0",

@@ -1,0 +1,30 @@
+{
+  "name": "@bytecut/ssimulacra2",
+  "version": "0.1.0",
+  "description": "SSIMULACRA2 image quality metric as WebAssembly, for Node.js. No native dependency.",
+  "type": "module",
+  "license": "BSD-2-Clause",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "worker.js",
+    "index.d.ts",
+    "ssimulacra2.wasm",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:wasm": "bash scripts/build-wasm.sh"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "tool": "libjxl tools/ssimulacra2 (the Cloudinary SSIMULACRA 2 reference implementation)",
+  "toolCommit": "ef67fde2ec16d52e644c5a0969230b9a85e3eb31",
+  "recordedWith": "cmake Release build of target `ssimulacra2`, Linux x86_64, gcc",
+  "note": "Scores printed by the reference tool for `<reference> <distorted>` on the PNG files in this folder. The fixtures are committed because these numbers depend on their exact pixels; see scripts/make-ssim-fixtures.ts.",
+  "pairs": [
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-avif-q35.png",
+      "score": 81.55678854
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-blur.png",
+      "score": 88.94352166
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-color-shift.png",
+      "score": 68.94718878
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-jpeg-q20.png",
+      "score": 66.70629626
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-jpeg-q50.png",
+      "score": 83.50412468
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-jpeg-q85.png",
+      "score": 90.93824655
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-noise.png",
+      "score": 59.78445864
+    },
+    {
+      "reference": "photo-ref.png",
+      "distorted": "photo-webp-q30.png",
+      "score": 73.05004711
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-avif-q35.png",
+      "score": 71.46935729
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-blur.png",
+      "score": 29.66475228
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-color-shift.png",
+      "score": 57.46525601
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-jpeg-q20.png",
+      "score": 25.47214829
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-jpeg-q50.png",
+      "score": 46.49102937
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-jpeg-q85.png",
+      "score": 59.46543118
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-noise.png",
+      "score": 48.93950793
+    },
+    {
+      "reference": "synthetic-ref.png",
+      "distorted": "synthetic-webp-q30.png",
+      "score": 38.60605065
+    }
+  ]
+}

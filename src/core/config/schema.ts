@@ -131,7 +131,7 @@ export const configSchema = z
     concurrency: z.number().int().min(1).max(16).optional(),
     ffmpegPath: z.string().min(1).optional(),
     ffprobePath: z.string().min(1).optional(),
-    ssimulacra2Path: rejected("`ssimulacra2Path`"),
+    ssimulacra2Path: z.string().min(1).optional(),
   })
   .strict();
 

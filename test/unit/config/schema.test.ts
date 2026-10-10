@@ -76,12 +76,12 @@ describe("config schema", () => {
     );
   });
 
-  it("rejects perceptual-search fields until they have an engine (M9), and says so", () => {
+  it("rejects perceptual-search fields until they have an engine, and says so", () => {
     for (const field of ["ssimulacra2", "vmaf", "raw"]) {
       const message = errorOf({ presets: { a: { extends: "photo", [field]: 70 } } });
       expect(message).toMatch(new RegExp(`presets\\.a\\.${field}: .*M9`));
     }
-    expect(errorOf({ ssimulacra2Path: "/bin/x" })).toMatch(/ssimulacra2Path: .*M9/);
+    expect(() => parseConfig({ ssimulacra2Path: "/bin/ssimulacra2" }, "c")).not.toThrow();
   });
 
   it("requires publicPath to look like a URL prefix", () => {

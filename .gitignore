@@ -8,3 +8,6 @@ test/fixtures/video/
 
 # Built by the config loader tests (cleaned up after).
 test/.dist-*
+
+# Rust build output of the ssimulacra2 package.
+packages/ssimulacra2/rust/target/

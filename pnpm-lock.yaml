@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@bytecut/ssimulacra2':
+        specifier: workspace:*
+        version: link:packages/ssimulacra2
       citty:
         specifier: ^0.2.2
         version: 0.2.2
@@ -66,6 +69,8 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.27.7)(tsx@4.23.15))
+
+  packages/ssimulacra2: {}
 
 packages:
 

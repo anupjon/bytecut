@@ -19,6 +19,7 @@ export interface ResolveDeps {
 const ENV_VAR: Record<BinaryName, string> = {
   ffmpeg: "BYTECUT_FFMPEG",
   ffprobe: "BYTECUT_FFPROBE",
+  ssimulacra2: "BYTECUT_SSIMULACRA2",
 };
 
 function executableNames(name: BinaryName, platform: NodeJS.Platform, env: ResolveOptions["env"]) {

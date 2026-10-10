@@ -136,7 +136,8 @@ to preset names (first match wins; a pattern without `/` matches the name at any
 entries say what they `extends` (a built-in name without `extends` changes that built-in) and may set
 `target`, `widths`, `formats`, `quality`, `effort`, `lossless`, `priority` (images) or `audio`,
 `maxWidth`, `maxFps`, `codecs`, `crf` (video). `budgets` takes `maxFileSize` / `maxTotalSize` as bytes
-or `"250 KB"`. `ssimulacra2`, `vmaf`, `raw` and `ssimulacra2Path` are rejected until M9.
+or `"250 KB"`. `ssimulacra2`, `vmaf` and `raw` are rejected until M9's later stages;
+`ssimulacra2Path` (an optional native scorer) is accepted.
 
 ### Presets
 Built-ins: `photo`, `hero`, `icon`, `svg`, `background-video`, `content-video`, `gif-to-video`.
@@ -455,3 +456,7 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — `check --fail-on error|warn` is added beyond the milestone text (confirmed with you) — zero-config CI could otherwise never fail, since only `project/over-budget` defaults to `error`.
 - 2026-10-10 — `--changed` defaults to `HEAD` (local changes) and is measured from the merge-base; it reads only local git data and never fetches (§6.11), failing with the fix for a shallow clone — predictable on every CI provider.
 - 2026-10-10 — `check --report md|json` writes to stdout only and there is no output-file flag — §6.2 permits writes only in `outDir` and the config, so CI redirects.
+- 2026-10-10 — SSIMULACRA2 ships as a pnpm workspace package `@bytecut/ssimulacra2` with a committed prebuilt `.wasm` (confirmed with you) — the spec's "separate package we own", with no Rust needed to install, test or run CI.
+- 2026-10-10 — The WASM build matches the reference C++ tool within 0.032 on 16 recorded pairs and the test tolerance is 0.1 — measured against libjxl `tools/ssimulacra2` (commit ef67fde), not asserted; rayon is off and worker threads provide parallelism.
+- 2026-10-10 — A named native scorer path that is missing falls back to the built-in WASM scorer with a note, and never to PATH — a typo must not silently pick a different binary (as with ffmpeg), while the scorer can always fall back because WASM is always there.
+- 2026-10-10 — Native scorer inputs are written as temp files inside `outDir` through `SafeFs.writeTemp` and removed after each score — keeps §3's single write module true for a child process that reads files.
