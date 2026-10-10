@@ -1,0 +1,147 @@
+[
+  {
+    "ruleId": "gif/animated",
+    "severity": "warn",
+    "source": "public/img/loader.gif"
+  },
+  {
+    "ruleId": "gif/static",
+    "severity": "warn",
+    "source": "public/img/still.gif"
+  },
+  {
+    "ruleId": "image/cmyk-or-16bit",
+    "severity": "warn",
+    "source": "public/img/cmyk.jpg"
+  },
+  {
+    "ruleId": "image/cmyk-or-16bit",
+    "severity": "warn",
+    "source": "public/img/deep.png"
+  },
+  {
+    "ruleId": "image/metadata",
+    "severity": "info",
+    "source": "public/img/with-meta.jpg"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/cmyk.jpg"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/deep.png"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/diagram.png"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/hero.jpg"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/logo-copy.png"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/logo.png"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/photo-big.jpg"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/still.gif"
+  },
+  {
+    "ruleId": "image/no-modern-format",
+    "severity": "warn",
+    "source": "public/img/with-meta.jpg"
+  },
+  {
+    "ruleId": "image/no-responsive-set",
+    "severity": "info",
+    "source": "public/img/hero.jpg"
+  },
+  {
+    "ruleId": "image/no-responsive-set",
+    "severity": "info",
+    "source": "public/img/photo-big.jpg"
+  },
+  {
+    "ruleId": "image/oversized-dimensions",
+    "severity": "warn",
+    "source": "public/img/photo-big.jpg"
+  },
+  {
+    "ruleId": "image/photo-as-png",
+    "severity": "warn",
+    "source": "public/img/deep.png"
+  },
+  {
+    "ruleId": "image/photo-as-png",
+    "severity": "warn",
+    "source": "public/img/diagram.png"
+  },
+  {
+    "ruleId": "image/reencode-savings",
+    "severity": "info",
+    "source": "public/img/legacy.webp"
+  },
+  {
+    "ruleId": "project/duplicate",
+    "severity": "warn",
+    "source": "public/img/logo-copy.png"
+  },
+  {
+    "ruleId": "project/unreferenced",
+    "severity": "info",
+    "source": "public/icons/inline-photo.svg"
+  },
+  {
+    "ruleId": "project/unreferenced",
+    "severity": "info",
+    "source": "public/img/cmyk.jpg"
+  },
+  {
+    "ruleId": "project/unreferenced",
+    "severity": "info",
+    "source": "public/img/deep.png"
+  },
+  {
+    "ruleId": "project/unreferenced",
+    "severity": "info",
+    "source": "public/img/logo-copy.png"
+  },
+  {
+    "ruleId": "project/unreferenced",
+    "severity": "info",
+    "source": "public/img/still.gif"
+  },
+  {
+    "ruleId": "project/unreferenced",
+    "severity": "info",
+    "source": "public/img/with-meta.jpg"
+  },
+  {
+    "ruleId": "svg/embedded-raster",
+    "severity": "warn",
+    "source": "public/icons/inline-photo.svg"
+  },
+  {
+    "ruleId": "svg/unminified",
+    "severity": "warn",
+    "source": "public/icons/mark.svg"
+  }
+]

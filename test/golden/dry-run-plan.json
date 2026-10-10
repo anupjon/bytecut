@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "outDir": "public/_bytecut",
+  "publicPath": "/_bytecut",
+  "items": [
+    {
+      "source": "public/img/hero.jpg",
+      "sourceBytes": 19,
+      "sourceSha256": "7a366c58251e26444ca9e17c4e44b17e70c632055b79cb825b3748525eeca0cc",
+      "sourceWidth": 2400,
+      "sourceHeight": 1200,
+      "preset": "hero",
+      "classification": {
+        "reason": "name \"hero\" looks like a hero image",
+        "confidence": "high"
+      },
+      "outputs": [
+        {
+          "path": "img/hero/hero-640.avif",
+          "format": "avif",
+          "width": 640,
+          "lossless": false,
+          "quality": 65,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-640.webp",
+          "format": "webp",
+          "width": 640,
+          "lossless": false,
+          "quality": 82,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-1280.avif",
+          "format": "avif",
+          "width": 1280,
+          "lossless": false,
+          "quality": 65,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-1280.webp",
+          "format": "webp",
+          "width": 1280,
+          "lossless": false,
+          "quality": 82,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-1920.avif",
+          "format": "avif",
+          "width": 1920,
+          "lossless": false,
+          "quality": 65,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-1920.webp",
+          "format": "webp",
+          "width": 1920,
+          "lossless": false,
+          "quality": 82,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-2400.avif",
+          "format": "avif",
+          "width": 2400,
+          "lossless": false,
+          "quality": 65,
+          "effort": 4
+        },
+        {
+          "path": "img/hero/hero-2400.webp",
+          "format": "webp",
+          "width": 2400,
+          "lossless": false,
+          "quality": 82,
+          "effort": 4
+        }
+      ]
+    },
+    {
+      "source": "public/img/logo.png",
+      "sourceBytes": 19,
+      "sourceSha256": "a6780cfb0c5a9c0da715ee5bad77846a330aabab507c74060b7f4fdac6255b1f",
+      "sourceWidth": 300,
+      "sourceHeight": 300,
+      "preset": "icon",
+      "classification": {
+        "reason": "flat art (6 colours in sample, uses transparency, name \"logo\")",
+        "confidence": "high"
+      },
+      "outputs": [
+        {
+          "path": "img/logo/logo-64.avif",
+          "format": "avif",
+          "width": 64,
+          "lossless": true,
+          "quality": 80,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-64.webp",
+          "format": "webp",
+          "width": 64,
+          "lossless": true,
+          "quality": 90,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-128.avif",
+          "format": "avif",
+          "width": 128,
+          "lossless": true,
+          "quality": 80,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-128.webp",
+          "format": "webp",
+          "width": 128,
+          "lossless": true,
+          "quality": 90,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-256.avif",
+          "format": "avif",
+          "width": 256,
+          "lossless": true,
+          "quality": 80,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-256.webp",
+          "format": "webp",
+          "width": 256,
+          "lossless": true,
+          "quality": 90,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-300.avif",
+          "format": "avif",
+          "width": 300,
+          "lossless": true,
+          "quality": 80,
+          "effort": 4
+        },
+        {
+          "path": "img/logo/logo-300.webp",
+          "format": "webp",
+          "width": 300,
+          "lossless": true,
+          "quality": 90,
+          "effort": 4
+        }
+      ]
+    },
+    {
+      "source": "public/img/mid.jpg",
+      "sourceBytes": 18,
+      "sourceSha256": "0b5137a423e4d6a6d54c1af84d85ef6129c269e48a2fc97d2b10fc55f21c316a",
+      "sourceWidth": 1000,
+      "sourceHeight": 700,
+      "preset": "photo",
+      "classification": {
+        "reason": "continuous-tone image",
+        "confidence": "high"
+      },
+      "outputs": [
+        {
+          "path": "img/mid/mid-640.avif",
+          "format": "avif",
+          "width": 640,
+          "lossless": false,
+          "quality": 60,
+          "effort": 4
+        },
+        {
+          "path": "img/mid/mid-640.webp",
+          "format": "webp",
+          "width": 640,
+          "lossless": false,
+          "quality": 78,
+          "effort": 4
+        },
+        {
+          "path": "img/mid/mid-1000.avif",
+          "format": "avif",
+          "width": 1000,
+          "lossless": false,
+          "quality": 60,
+          "effort": 4
+        },
+        {
+          "path": "img/mid/mid-1000.webp",
+          "format": "webp",
+          "width": 1000,
+          "lossless": false,
+          "quality": 78,
+          "effort": 4
+        }
+      ]
+    },
+    {
+      "source": "public/img/spinner.webp",
+      "sourceBytes": 23,
+      "sourceSha256": "91037b4f688be92755f28ec1598d3ef4e316b2b5459af129ae1cab1600975c4d",
+      "sourceWidth": 64,
+      "sourceHeight": 64,
+      "preset": "-",
+      "outputs": [],
+      "skip": {
+        "reason": "animated image"
+      }
+    }
+  ]
+}
