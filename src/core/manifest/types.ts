@@ -2,10 +2,14 @@ import type { ImageFormat } from "../presets/photo.js";
 
 export const MANIFEST_FILE = "bytecut-manifest.json";
 /**
+ * 3: adds `videos`. Every version-2 manifest is a valid version-3 one with no videos, so v2 is
+ * read and upgraded in memory.
  * 2: output paths are mirrored relative to the static root (`public/img/a.jpg` →
  * `img/a/…`), not the project root. Version 1 was a pre-release layout.
  */
-export const MANIFEST_VERSION = 2;
+export const MANIFEST_VERSION = 3;
+/** Oldest version that is still read (and rewritten as the current one). */
+export const MANIFEST_MIN_VERSION = 2;
 
 /**
  * `written`: file exists in outDir with `sha256`.
@@ -45,6 +49,41 @@ export interface ManifestSource {
   outputs: ManifestOutput[];
 }
 
+export interface ManifestVideoOutput {
+  path: string;
+  url: string;
+  role: "video" | "poster";
+  format: "mp4" | "avif";
+  codec?: "av1" | "h264";
+  width: number;
+  height: number;
+  fps?: number;
+  bytes: number;
+  sha256?: string;
+  /** Resolved parameters, so "same source + same preset" can be decided from the manifest alone. */
+  crf?: number;
+  speed?: string;
+  maxWidth?: number | null;
+  maxFps?: number | null;
+  audio?: "strip" | "keep";
+  quality?: number;
+  effort?: number;
+  at?: number;
+  /** Encoder actually used, with the ffmpeg version. */
+  encoder: string;
+  status: ManifestOutputStatus;
+}
+
+export interface ManifestVideoSource {
+  sha256: string;
+  bytes: number;
+  width: number;
+  height: number;
+  durationSec: number;
+  preset: string;
+  outputs: ManifestVideoOutput[];
+}
+
 /** No timestamps: the manifest is committed, so an unchanged run must leave it byte-identical. */
 export interface Manifest {
   version: typeof MANIFEST_VERSION;
@@ -53,4 +92,6 @@ export interface Manifest {
   publicPath: string;
   /** Keyed by POSIX path relative to the project root. */
   sources: Record<string, ManifestSource>;
+  /** Videos and animated GIFs, keyed the same way. */
+  videos: Record<string, ManifestVideoSource>;
 }

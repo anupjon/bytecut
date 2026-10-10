@@ -4,7 +4,10 @@ import type { CacheState } from "../manifest/cache.js";
 import type { Manifest } from "../manifest/types.js";
 import type { Plan, PlanItem } from "../plan/types.js";
 import type { ImageFormat } from "../presets/photo.js";
-import type { ItemEstimate } from "./estimate.js";
+import type { VideoClassification } from "../classify/video.js";
+import type { VideoPlanItem } from "../plan/types.js";
+import type { VideoProbe } from "../video/probe.js";
+import type { ItemEstimate, VideoEstimate } from "./estimate.js";
 
 export type Severity = "error" | "warn" | "info" | "off";
 
@@ -30,6 +33,13 @@ export interface ProjectContext {
   manifest: Manifest | null;
   /** Encoder strings the current engine would record, per format. */
   encoders: Record<ImageFormat, string>;
+  /**
+   * Encoder labels the installed ffmpeg would record per video codec, e.g.
+   * `libsvtav1 (ffmpeg 6.1.1)`. Absent when there is no ffmpeg or no video work.
+   */
+  videoEncoders?: Partial<Record<"av1" | "h264", string>>;
+  /** Codecs with no installed encoder; their outputs are not expected to exist. */
+  unavailableCodecs?: ReadonlySet<string>;
   /** Whether a source path (relative to the project root) still exists on disk. */
   sourceExists(source: string): Promise<boolean>;
   /** sha256 of an output file, or null if it doesn't exist. */
@@ -58,6 +68,23 @@ export interface SvgFacts {
   embeddedRasterCount: number;
 }
 
+export interface VideoFacts {
+  source: string;
+  bytes: number;
+  sha256: string;
+  probe: VideoProbe;
+  /** MP4/MOV: moov before mdat. Null for other containers. */
+  faststart: boolean | null;
+  classification: VideoClassification;
+  item: VideoPlanItem;
+  cache: CacheState;
+  /** Null when no encoder is installed to estimate with. */
+  estimate: VideoEstimate | null;
+  /** An image next to the video that serves as its poster. */
+  hasPoster: boolean;
+  isGif: boolean;
+}
+
 export interface Budgets {
   /** Largest allowed size, in bytes, of any single served image. */
   maxFileBytes?: number;
@@ -70,7 +97,10 @@ export interface AuditContext extends ProjectContext {
   /** Raster files the plan could not process (animated, corrupt, unsupported). */
   skipped: Array<{ source: string; bytes: number; reason: string; animatedGif: boolean }>;
   svgs: SvgFacts[];
-  videos: string[];
+  /** Videos and animated GIFs that ffprobe could read. */
+  videos: VideoFacts[];
+  /** Videos that could not be probed (no ffmpeg), listed so they are never silently skipped (§4). */
+  unprobed: Array<{ source: string; bytes: number; reason: string }>;
   /** Lowercased image basenames referenced from project text files; null if not scanned. */
   references: Set<string> | null;
   budgets: Budgets;
@@ -88,7 +118,7 @@ export type FixKind = "optimize" | null;
 /** One file per rule (§5). */
 export interface AuditRule<C extends ProjectContext = AuditContext> {
   id: string;
-  category: "image" | "svg" | "gif" | "project";
+  category: "image" | "svg" | "gif" | "video" | "project";
   defaultSeverity: Exclude<Severity, "off">;
   check(ctx: C): Promise<Finding[]>;
   fix: FixKind;

@@ -123,6 +123,8 @@ export function App(props: AppProps): ReactNode {
           onItemStart: (source) => dispatch({ type: "run-item-start", source }),
           onOutput: (source, output) => dispatch({ type: "run-output", source, output }),
           onItemDone: () => dispatch({ type: "run-item-done" }),
+          onProgress: (_source, path, fraction) =>
+            dispatch({ type: "run-progress", path, fraction }),
         },
         controller.signal,
       );

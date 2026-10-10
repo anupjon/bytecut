@@ -39,10 +39,11 @@ const output = (over: Partial<ManifestOutput> = {}): ManifestOutput => ({
 });
 
 const manifest = (sources: Manifest["sources"]): Manifest => ({
-  version: 2,
+  version: 3,
   tools: {},
   publicPath: "/_bytecut",
   sources,
+  videos: {},
 });
 
 const entry = (over: Partial<Manifest["sources"][string]> = {}) => ({

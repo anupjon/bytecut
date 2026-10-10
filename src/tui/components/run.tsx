@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import type { ReactNode } from "react";
 import { formatSummary } from "../../cli/format.js";
 import { formatBytes, plural } from "../../core/units.js";
-import type { OutputResult } from "../../core/execute/run.js";
+import type { OutputResult, VideoOutputResult } from "../../core/execute/run.js";
 import type { Review, State } from "../state.js";
 
 const BAR_WIDTH = 30;
@@ -12,11 +12,12 @@ function bar(done: number, total: number): string {
   return "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled);
 }
 
-const STATUS_COLOR: Record<OutputResult["status"], string> = {
+const STATUS_COLOR: Record<(OutputResult | VideoOutputResult)["status"], string> = {
   written: "green",
   unchanged: "gray",
   "already-optimal": "gray",
   protected: "yellow",
+  unavailable: "yellow",
   failed: "red",
   cancelled: "yellow",
 };
@@ -94,6 +95,14 @@ export function RunView(props: { state: State }): ReactNode {
           Cancelling: finishing the current encode so no partial file is left behind…
         </Text>
       ) : null}
+      {Object.entries(run.progress)
+        .filter(([, f]) => f > 0 && f < 1)
+        .slice(-2)
+        .map(([path, f]) => (
+          <Text key={path} dimColor wrap="truncate-end">
+            {path} {Math.round(f * 100)}%
+          </Text>
+        ))}
       <Box flexDirection="column" marginTop={1}>
         {tail.map(({ source, output }, i) => (
           <Text

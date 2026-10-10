@@ -3,7 +3,9 @@ import type { ImageEngine } from "../engines/types.js";
 import { sha256 } from "../hash.js";
 import { checkCache, type CacheMissReason } from "../manifest/cache.js";
 import type { Manifest } from "../manifest/types.js";
-import type { Plan, PlanItem } from "../plan/types.js";
+import type { Plan, PlanItem, VideoPlanItem } from "../plan/types.js";
+import type { VideoEngine } from "../video/types.js";
+import { runVideoItem, type VideoLaneFs } from "./video.js";
 import type { ImageFormat } from "../presets/photo.js";
 
 /**
@@ -12,7 +14,14 @@ import type { ImageFormat } from "../presets/photo.js";
  * protected: a file we don't own is in the way, so it was left alone (§6.6).
  */
 export type OutputStatus =
-  "written" | "unchanged" | "already-optimal" | "protected" | "failed" | "cancelled";
+  | "written"
+  | "unchanged"
+  | "already-optimal"
+  | "protected"
+  /** The encoder this output needs is not installed (e.g. no AV1 encoder). */
+  | "unavailable"
+  | "failed"
+  | "cancelled";
 
 export interface OutputResult {
   path: string;
@@ -42,8 +51,48 @@ export interface ItemResult {
   outputs: OutputResult[];
 }
 
+export interface VideoOutputResult {
+  path: string;
+  role: "video" | "poster";
+  /** `mp4` for videos, `avif` for posters. */
+  format: "mp4" | "avif";
+  codec?: "av1" | "h264";
+  width: number;
+  height: number;
+  fps?: number;
+  bytes: number;
+  sha256?: string;
+  /** Parameters the output was made with, recorded so the cache can compare them. */
+  crf?: number;
+  speed?: string;
+  maxWidth?: number | null;
+  maxFps?: number | null;
+  audio?: "strip" | "keep";
+  quality?: number;
+  effort?: number;
+  at?: number;
+  encoder?: string;
+  status: OutputStatus;
+  error?: string;
+}
+
+export interface VideoItemResult {
+  source: string;
+  sourceBytes: number;
+  sourceSha256: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  durationSec: number;
+  preset: string;
+  status: "done" | "cached" | "skipped" | "failed" | "cancelled";
+  reason?: string;
+  outputs: VideoOutputResult[];
+}
+
 export interface RunResult {
   items: ItemResult[];
+  /** Video results; absent when the plan had no videos. */
+  videos?: VideoItemResult[];
   cancelled: boolean;
   /** Human-readable notes, e.g. outputs left alone because they were modified. */
   warnings: string[];
@@ -57,6 +106,14 @@ export interface RunOptions {
     readSource(absolutePath: string): Promise<Buffer>;
     readOutput(relativePosixPath: string): Promise<Buffer | null>;
     writeOutput(relativePosixPath: string, data: Uint8Array): Promise<void>;
+  } & Partial<VideoLaneFs>;
+  /** Present when ffmpeg is usable; without it videos are reported as needing it. */
+  video?: {
+    engine: VideoEngine;
+    /** Videos encoded at once (default 1: SVT-AV1 already uses every core). */
+    concurrency?: number;
+    /** Shown with "needs ffmpeg" when there is no engine. */
+    needsFfmpeg?: string;
   };
   manifest: Manifest | null;
   /** Re-encode even when unchanged, and overwrite outputs we don't own. */
@@ -67,6 +124,11 @@ export interface RunOptions {
   /** Fires as each output of an item is resolved, so a UI can show live progress. */
   onOutputDone?(source: string, output: OutputResult): void;
   onItemDone?(result: ItemResult, done: number, total: number): void;
+  onVideoItemStart?(source: string): void;
+  /** Encode progress for one video output, 0..1. */
+  onVideoProgress?(source: string, path: string, fraction: number): void;
+  onVideoOutputDone?(source: string, output: VideoOutputResult): void;
+  onVideoItemDone?(result: VideoItemResult, done: number, total: number): void;
 }
 
 function message(error: unknown): string {
@@ -221,10 +283,13 @@ export async function runPlan(plan: Plan, options: RunOptions): Promise<RunResul
   for (const source of Object.values(options.manifest?.sources ?? {})) {
     for (const out of source.outputs) if (out.sha256) owned.set(out.path, out.sha256);
   }
+  for (const source of Object.values(options.manifest?.videos ?? {})) {
+    for (const out of source.outputs) if (out.sha256) owned.set(out.path, out.sha256);
+  }
 
   let next = 0;
   let done = 0;
-  const workers = Math.max(1, Math.min(options.concurrency ?? 2, plan.items.length));
+  const workers = Math.max(1, Math.min(options.concurrency ?? 2, Math.max(1, plan.items.length)));
 
   async function worker(): Promise<void> {
     for (;;) {
@@ -243,8 +308,80 @@ export async function runPlan(plan: Plan, options: RunOptions): Promise<RunResul
     }
   }
 
-  await Promise.all(Array.from({ length: workers }, worker));
-  return { items: results, cancelled: options.signal?.aborted ?? false, warnings: warnings.sort() };
+  // Videos run in their own lane with its own limit, alongside the (quick) image lane.
+  const videoItems = plan.videos ?? [];
+  const videoResults = new Array<VideoItemResult>(videoItems.length);
+  let videoNext = 0;
+  let videoDone = 0;
+  const videoWorkers = Math.max(
+    1,
+    Math.min(options.video?.concurrency ?? 1, Math.max(1, videoItems.length)),
+  );
+  const videoWarnings = new Set<string>();
+
+  async function videoWorker(): Promise<void> {
+    for (;;) {
+      const index = videoNext++;
+      const item = videoItems[index];
+      if (!item) return;
+      let result: VideoItemResult;
+      const lane = options.video;
+      const fs = options.fs;
+      if (options.signal?.aborted) {
+        result = videoHeader(item, "cancelled");
+      } else if (!lane || !fs.reserveTemp || !fs.commitTemp || !fs.discardTemp || !fs.outputPath) {
+        result = videoHeader(item, "skipped", `needs ffmpeg: ${lane?.needsFfmpeg ?? "not found"}`);
+      } else {
+        options.onVideoItemStart?.(item.source);
+        result = await runVideoItem(item, {
+          projectRoot: options.projectRoot,
+          engine: lane.engine,
+          imageEngine: options.engine,
+          fs: fs as VideoLaneFs,
+          manifest: options.manifest,
+          force: options.force ?? false,
+          signal: options.signal,
+          owned,
+          warnings: videoWarnings,
+          onProgress: options.onVideoProgress,
+          onOutputDone: options.onVideoOutputDone,
+        });
+      }
+      videoResults[index] = result;
+      options.onVideoItemDone?.(result, ++videoDone, videoItems.length);
+    }
+  }
+
+  await Promise.all([
+    ...Array.from({ length: workers }, worker),
+    ...(videoItems.length > 0 ? Array.from({ length: videoWorkers }, videoWorker) : []),
+  ]);
+  for (const w of videoWarnings) warnings.push(w);
+  return {
+    items: results,
+    ...(videoItems.length > 0 ? { videos: videoResults } : {}),
+    cancelled: options.signal?.aborted ?? false,
+    warnings: warnings.sort(),
+  };
+}
+
+function videoHeader(
+  item: VideoPlanItem,
+  status: VideoItemResult["status"],
+  reason?: string,
+): VideoItemResult {
+  return {
+    source: item.source,
+    sourceBytes: item.sourceBytes,
+    sourceSha256: item.sourceSha256,
+    sourceWidth: item.sourceWidth,
+    sourceHeight: item.sourceHeight,
+    durationSec: item.durationSec,
+    preset: item.preset,
+    status,
+    ...(reason ? { reason } : {}),
+    outputs: [],
+  };
 }
 
 export type { CacheMissReason };

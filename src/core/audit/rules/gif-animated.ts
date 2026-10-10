@@ -1,28 +1,42 @@
+import { extname } from "node:path";
 import type { AuditRule, Finding } from "../types.js";
+import { isVideoCovered, videoSaving } from "./video-helpers.js";
 
 const ID = "gif/animated";
 
 /**
- * Reported with no savings number: a trustworthy estimate needs a trial encode with ffmpeg,
- * which arrives in M5. Per §4 it is never silently skipped, and says what to install.
+ * An animated GIF is a video in disguise, and usually several times larger than one. With
+ * ffmpeg it carries a real estimate; without, it is still listed with what to install, never
+ * silently skipped (§4).
  */
 export const gifAnimated: AuditRule = {
   id: ID,
   category: "gif",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const findings: Finding[] = [];
-    for (const gif of ctx.skipped) {
-      if (!gif.animatedGif) continue;
+    for (const video of ctx.videos) {
+      if (!video.isGif || isVideoCovered(video)) continue;
+      const saving = videoSaving(video);
+      findings.push({
+        ruleId: ID,
+        severity: "warn",
+        source: video.source,
+        message: "animated GIF; a looping muted video is typically far smaller",
+        current: video.bytes,
+        ...(video.estimate ? { estimated: video.estimate.best.bytes } : {}),
+        ...(saving !== undefined ? { savingsBytes: saving } : {}),
+      });
+    }
+    for (const gif of ctx.unprobed) {
+      if (extname(gif.source).toLowerCase() !== ".gif") continue;
       findings.push({
         ruleId: ID,
         severity: "warn",
         source: gif.source,
-        message: ctx.ffmpeg.found
-          ? "animated GIF; a looping video is typically far smaller (conversion arrives in M5)"
-          : `animated GIF; a looping video is typically far smaller. Needs ffmpeg: ${ctx.ffmpeg.installHint}`,
+        message: `animated GIF; a looping muted video is typically far smaller. Needs ffmpeg: ${ctx.ffmpeg.installHint}`,
         current: gif.bytes,
       });
     }

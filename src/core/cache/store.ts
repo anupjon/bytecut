@@ -1,5 +1,6 @@
 import type { ImageAnalysis } from "../engines/types.js";
 import type { SvgAnalysis } from "../engines/svg.js";
+import type { VideoProbe } from "../video/probe.js";
 
 export const CACHE_DIR = ".bytecut-cache";
 export const CACHE_FILE = `${CACHE_DIR}/cache.json`;
@@ -21,6 +22,7 @@ interface CacheData {
   fingerprint: string;
   analyses: Record<string, ImageAnalysis>;
   svgs: Record<string, SvgAnalysis>;
+  videos: Record<string, VideoProbe>;
   estimates: Record<string, EstimateEntry>;
 }
 
@@ -53,6 +55,7 @@ export class AnalysisCache {
       fingerprint,
       analyses: {},
       svgs: {},
+      videos: {},
       estimates: {},
     });
   }
@@ -67,6 +70,7 @@ export class AnalysisCache {
           parsed.fingerprint === fingerprint &&
           parsed.analyses &&
           parsed.svgs &&
+          parsed.videos &&
           parsed.estimates
         ) {
           return new AnalysisCache(parsed as CacheData);
@@ -96,6 +100,15 @@ export class AnalysisCache {
     this.dirty = true;
   }
 
+  getVideoProbe(sha: string): VideoProbe | undefined {
+    return this.data.videos[sha];
+  }
+
+  setVideoProbe(sha: string, probe: VideoProbe): void {
+    this.data.videos[sha] = probe;
+    this.dirty = true;
+  }
+
   getEstimate(key: string): EstimateEntry | undefined {
     return this.data.estimates[key];
   }
@@ -114,6 +127,7 @@ export class AnalysisCache {
     if (!this.dirty) return;
     trim(this.data.analyses, MAX_ANALYSES);
     trim(this.data.svgs, MAX_ANALYSES);
+    trim(this.data.videos, MAX_ANALYSES);
     trim(this.data.estimates, MAX_ESTIMATES);
     await writer.writeOutput(CACHE_IGNORE_FILE, Buffer.from("*\n"));
     await writer.writeOutput(CACHE_FILE, Buffer.from(`${JSON.stringify(this.data)}\n`));

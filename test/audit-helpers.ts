@@ -1,5 +1,7 @@
 import type { ItemEstimate } from "../src/core/audit/estimate.js";
-import type { AuditContext, ImageFacts, SvgFacts } from "../src/core/audit/types.js";
+import type { AuditContext, ImageFacts, SvgFacts, VideoFacts } from "../src/core/audit/types.js";
+import type { VideoPlanItem } from "../src/core/plan/types.js";
+import type { VideoProbe } from "../src/core/video/probe.js";
 import type { ImageAnalysis } from "../src/core/engines/types.js";
 import type { PlanItem } from "../src/core/plan/types.js";
 import { fakeAnalysis } from "./helpers.js";
@@ -75,10 +77,70 @@ export function context(
     skipped: [],
     svgs: [],
     videos: [],
+    unprobed: [],
     references: null,
     budgets: {},
     ffmpeg: { found: true, installHint: "sudo apt install ffmpeg" },
     options: (id) => opts[id] ?? {},
+    ...rest,
+  };
+}
+
+export function videoProbe(over: Partial<VideoProbe> = {}): VideoProbe {
+  return {
+    durationSec: 10,
+    width: 1280,
+    height: 720,
+    fps: 30,
+    videoCodec: "h264",
+    pixelFormat: "yuv420p",
+    bitrate: 1_000_000,
+    hasAudio: true,
+    audioCodec: "aac",
+    container: "mov,mp4,m4a,3gp,3g2,mj2",
+    ...over,
+  };
+}
+
+/** A not-yet-optimized H.264 MP4 with audio whose best output is estimated at a fifth. */
+export function video(
+  over: Partial<Omit<VideoFacts, "probe">> & { probe?: Partial<VideoProbe> } = {},
+): VideoFacts {
+  const { probe, ...rest } = over;
+  const source = rest.source ?? "media/a.mp4";
+  const bytes = rest.bytes ?? 1_000_000;
+  const p = videoProbe(probe);
+  const item: VideoPlanItem = {
+    source,
+    sourceBytes: bytes,
+    sourceSha256: "c".repeat(64),
+    sourceWidth: p.width,
+    sourceHeight: p.height,
+    durationSec: p.durationSec,
+    fps: p.fps,
+    hasAudio: p.hasAudio,
+    videoCodec: p.videoCodec,
+    preset: "content-video",
+    outputs: [],
+  };
+  return {
+    source,
+    bytes,
+    sha256: source
+      .padEnd(64, "0")
+      .slice(0, 64)
+      .replace(/[^0-9a-f]/g, "0"),
+    probe: p,
+    faststart: true,
+    classification: { preset: "content-video", confidence: "high", reason: "test" },
+    item,
+    cache: { kind: "miss", reason: "new" },
+    estimate: {
+      best: { codec: "av1", bytes: Math.round(bytes / 5), basis: "extrapolated" },
+      perCodec: [{ codec: "av1", bytes: Math.round(bytes / 5), basis: "extrapolated" }],
+    },
+    hasPoster: false,
+    isGif: false,
     ...rest,
   };
 }

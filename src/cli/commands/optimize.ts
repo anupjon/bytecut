@@ -11,6 +11,7 @@ import { BytecutError } from "../../core/errors.js";
 import { parsePlan, serializePlan } from "../../core/plan/schema.js";
 import type { Plan } from "../../core/plan/types.js";
 import { guarded } from "../errors.js";
+import { createVideoEngine, ffmpegInstallText } from "../shared.js";
 import { formatFindings, formatPlan, formatSummary } from "../format.js";
 
 const FRAMEWORK_NAMES: Record<string, string> = {
@@ -47,8 +48,14 @@ export default defineCommand({
     "public-path": { type: "string", description: "URL prefix for outputs (default: /_bytecut)" },
     preset: {
       type: "string",
-      description: "Force a preset (photo, hero, icon) instead of classifying",
+      description:
+        "Force a preset (images: photo, hero, icon; video: background-video, content-video, gif-to-video)",
     },
+    ffmpeg: {
+      type: "string",
+      description: "Path to the ffmpeg binary (otherwise BYTECUT_FFMPEG, then PATH)",
+    },
+    ffprobe: { type: "string", description: "Path to the ffprobe binary" },
   },
   run: guarded(async ({ args }) => {
     const inputs = args._.map(String);
@@ -114,8 +121,12 @@ export default defineCommand({
       execute: !dryRun,
       force: Boolean(args.force),
       concurrency: Math.min(4, availableParallelism()),
+      videoEngine: createVideoEngine({ ffmpeg: args.ffmpeg, ffprobe: args.ffprobe }),
+      needsFfmpeg: ffmpegInstallText(),
       signal: controller.signal,
       onItemDone: (item, done, total) => console.error(`[${done}/${total}] ${item.source}`),
+      onVideoItemDone: (item, done, total) =>
+        console.error(`[video ${done}/${total}] ${item.source}`),
     });
     process.off("SIGINT", onSigint);
 
@@ -127,17 +138,13 @@ export default defineCommand({
         `Skipping ${plural(outcome.svgs.length, "SVG file")}: SVG output is not implemented yet (see \`bytecut audit\`).`,
       );
     }
-    if (outcome.videos.length > 0) {
-      console.warn(
-        `Skipping ${plural(outcome.videos.length, "video file")}: video support arrives in a later release.`,
-      );
-    }
-    if (outcome.plan.items.length === 0) {
-      console.log("No images found.");
+    if (outcome.plan.items.length === 0 && (outcome.plan.videos ?? []).length === 0) {
+      console.log("No images or videos found.");
       return;
     }
 
     const findings = formatFindings(outcome.findings);
+    for (const note of outcome.notes) console.error(`Note: ${note}`);
 
     if (dryRun) {
       if (args.json) {
@@ -158,6 +165,11 @@ export default defineCommand({
     if (findings) console.log(`\n${findings}`);
 
     if (result.cancelled) process.exitCode = 130;
-    else if (result.items.some((i) => i.status === "failed")) process.exitCode = 1;
+    else if (
+      result.items.some((i) => i.status === "failed") ||
+      (result.videos ?? []).some((v) => v.status === "failed")
+    ) {
+      process.exitCode = 1;
+    }
   }),
 });

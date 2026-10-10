@@ -116,6 +116,14 @@ that have one), so `public/img/hero.jpg` → `<outDir>/img/hero/hero-640.avif`, 
 `/_bytecut/img/hero/hero-640.avif`. Sources outside the static root mirror from the project root.
 A static site with no `public/` uses `outDir = _bytecut` and static root `.`.
 
+Videos (and animated GIFs) mirror the same way, one folder per source:
+```
+<outDir>/<dir>/<basename>/<basename>-<width>.av1.mp4
+<outDir>/<dir>/<basename>/<basename>-<width>.h264.mp4
+<outDir>/<dir>/<basename>/<basename>-poster.avif
+```
+`<width>` is the output width after the preset's cap (even, never upscaled).
+
 ### Config (optional) — `bytecut.config.ts` / `.json` / `.toml`
 Fields: `include`, `exclude`, `outDir`, `publicPath`, `framework`, `assets` (glob → preset, first
 match wins), `presets` (with `extends`), `audit.rules` (ESLint-style `[severity, options]`),
@@ -145,7 +153,7 @@ preset used, and optional placeholder. It is also the cache: unchanged hash + sa
 Include a `version` field; bump it on breaking changes. Also record the tool versions and the encoders
 actually used per output (e.g. `libsvtav1`, `libx264`, whether VMAF search ran).
 
-As implemented in M2 (`src/core/manifest/types.ts`): `{ version, tools, publicPath, sources }`; each
+As implemented (`src/core/manifest/types.ts`; version 3 adds `videos`, and version 2 is still read): `{ version, tools, publicPath, sources }`; each
 source has `sha256, bytes, width, height, preset, outputs[]`; each output has `path, url, format, width,
 height, bytes, sha256?, lossless, quality, effort, encoder, status` where `status` is `written`,
 `already-optimal` (no file, no sha256) or `stale`. Keys are sorted and there are no timestamps, so an
@@ -407,4 +415,12 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — Per-file preset overrides are TUI session state, passed to both the audit and the optimizer so an optimized file does not reappear as work to do; persisting them is the M7 save prompt.
 - 2026-10-10 — Esc during a run aborts and finishes the in-flight encode (sharp cannot be interrupted); atomic writes mean no partial file is left, and the manifest records only what was fully written.
 - 2026-10-10 — Added `react` (Ink's required peer), `@types/react` and `ink-testing-library` (dev) for M4, with your approval; `ink` was already on the §2 list.
+- 2026-10-10 — Manifest is version 3 and still reads version 2 (additive `videos` map) — a v2 manifest loses nothing, so forcing a delete-and-regenerate would only cost users encoding time.
+- 2026-10-10 — Video lives in separate `plan.videos` / `manifest.videos` collections rather than a tagged union of outputs — image code and its tests stay untouched, and video's different parameters (codec, crf, caps, audio) get precise types.
+- 2026-10-10 — Plans never depend on which encoders are installed; availability is decided and reported when a plan runs — a saved plan means the same thing on every machine, and `--dry-run --json` output stays stable.
+- 2026-10-10 — Default AV1 speed is SVT-AV1 preset 6 and quality is a fixed CRF per preset (confirmed with you) — outputs are committed and cached by hash, so encode time is paid once; the perceptual search is M9.
+- 2026-10-10 — Audit estimates video savings by default with real sample encodes cached by content hash (confirmed with you); a clip of at most four seconds is encoded whole and so is exact.
+- 2026-10-10 — ffmpeg writes only to temp paths reserved by `SafeFs` and published atomically; sampling writes nothing (raw stream on stdout) — keeps §3's "all writes go through one module" true with a child process doing the writing.
+- 2026-10-10 — Background-video is chosen only on evidence (no audio on a short clip, or a backdrop-like name on a short clip) — removing audio is the one irreversible change, so doubt keeps it (§6.8).
+- 2026-10-10 — An output whose encoder is unavailable is reported as skipped and does not count as a cache miss — otherwise the other codec would be re-encoded on every run.
 

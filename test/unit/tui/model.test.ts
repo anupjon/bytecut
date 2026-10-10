@@ -31,6 +31,7 @@ const finding = (
 
 const report = (files: FileSummary[], findings: Finding[]): AuditReport => ({
   findings,
+  unprobed: [],
   files,
   counts: { images: files.length, svgs: 0, videos: 0, skipped: 0 },
   totals: { sourceBytes: 0, potentialSavingsBytes: 0, optimizedImages: 0 },
@@ -126,6 +127,66 @@ describe("buildModel", () => {
     );
     expect(m.rows.map((r) => r.source)).toEqual(["a.jpg"]);
     expect(m.reportOnly.map((f) => f.ruleId)).toEqual(["project/orphaned-output"]);
+  });
+});
+
+describe("videos", () => {
+  it("lists a video with a fixable finding as a selectable row, like an image", () => {
+    const m = buildModel(
+      report(
+        [
+          file("clip.mp4", {
+            kind: "video",
+            durationSec: 12,
+            preset: "content-video",
+            format: "h264",
+          }),
+        ],
+        [finding("video/no-modern-codec", "clip.mp4")],
+      ),
+    );
+    expect(m.rows.map((r) => [r.source, r.preset])).toEqual([["clip.mp4", "content-video"]]);
+  });
+
+  it("shows videos that need ffmpeg as skipped, with the reason, never as rows", () => {
+    const m = buildModel(
+      report(
+        [
+          file("clip.mp4", {
+            kind: "video",
+            preset: "-",
+            skipped: "needs ffmpeg: install ffmpeg with: apt install ffmpeg",
+          }),
+        ],
+        [finding("gif/animated", "clip.mp4")],
+      ),
+    );
+    expect(m.rows).toEqual([]);
+    expect(m.skipped).toEqual([
+      { source: "clip.mp4", reason: "needs ffmpeg: install ffmpeg with: apt install ffmpeg" },
+    ]);
+  });
+
+  it("treats the video rules as fixable by optimize and project hygiene as report-only", () => {
+    const m = buildModel(
+      report(
+        [file("a.mp4", { kind: "video" })],
+        [
+          finding("video/no-faststart", "a.mp4"),
+          finding("video/high-fps", "a.mp4"),
+          finding("video/audio-in-background", "a.mp4"),
+          finding("video/no-poster", "a.mp4", "info"),
+          finding("project/duplicate", "a.mp4"),
+        ],
+      ),
+    );
+    expect(m.rows[0]!.findings.map((f) => f.ruleId).sort()).toEqual([
+      "video/audio-in-background",
+      "video/high-fps",
+      "video/no-faststart",
+      "video/no-poster",
+    ]);
+    expect(m.reportOnly.map((f) => f.ruleId)).toEqual(["project/duplicate"]);
   });
 });
 

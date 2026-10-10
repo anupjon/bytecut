@@ -4,8 +4,15 @@ import { audit, type AuditPhase } from "../core/commands/audit.js";
 import { optimize } from "../core/commands/optimize.js";
 import type { ImageEngine } from "../core/engines/types.js";
 import type { SvgEngine } from "../core/engines/svg.js";
+import type { VideoEngine } from "../core/video/types.js";
 import { BytecutError } from "../core/errors.js";
-import type { ItemResult, OutputResult, RunResult } from "../core/execute/run.js";
+import type {
+  ItemResult,
+  OutputResult,
+  RunResult,
+  VideoItemResult,
+  VideoOutputResult,
+} from "../core/execute/run.js";
 import { SafeFs } from "../core/fs-safe.js";
 import { toPosix } from "../core/posix.js";
 import type { ProjectInfo } from "../core/scan/detect.js";
@@ -22,12 +29,16 @@ export interface SessionOptions {
   toolVersion: string;
   ffmpeg: { found: boolean; installHint: string };
   concurrency?: number;
+  videoEngine?: VideoEngine | null;
+  needsFfmpeg?: string;
 }
 
 export interface RunHandlers {
   onItemStart(source: string): void;
-  onOutput(source: string, output: OutputResult): void;
-  onItemDone(result: ItemResult): void;
+  onOutput(source: string, output: OutputResult | VideoOutputResult): void;
+  onItemDone(result: ItemResult | VideoItemResult): void;
+  /** Encode progress of one video output, 0..1. */
+  onProgress?(source: string, path: string, fraction: number): void;
 }
 
 /**
@@ -58,6 +69,8 @@ export function createSession(options: SessionOptions): Session {
     projectRoot,
     engine,
     toolVersion: options.toolVersion,
+    videoEngine: options.videoEngine ?? null,
+    ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
     outDir,
     staticRoot: project.staticRoot,
     publicPath: project.publicPath,
@@ -73,6 +86,8 @@ export function createSession(options: SessionOptions): Session {
         outDir,
         staticRoot: project.staticRoot,
         ffmpeg: options.ffmpeg,
+        videoEngine: options.videoEngine ?? null,
+        ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
         persistCache: true,
         presetOverrides: presets,
         onProgress,
@@ -87,7 +102,7 @@ export function createSession(options: SessionOptions): Session {
         presetOverrides: presets,
         execute: false,
       });
-      const items: ReviewItem[] = outcome.plan.items.map((item): ReviewItem => {
+      const videoItems: ReviewItem[] = (outcome.plan.videos ?? []).map((item): ReviewItem => {
         if (item.skip) {
           return {
             source: item.source,
@@ -105,6 +120,27 @@ export function createSession(options: SessionOptions): Session {
           outputs: item.outputs.length,
         };
       });
+      const items: ReviewItem[] = [
+        ...outcome.plan.items.map((item): ReviewItem => {
+          if (item.skip) {
+            return {
+              source: item.source,
+              preset: item.preset,
+              state: "skipped",
+              outputs: 0,
+              note: item.skip.reason,
+            };
+          }
+          const unchanged = outcome.cache.get(item.source)?.kind === "hit";
+          return {
+            source: item.source,
+            preset: item.preset,
+            state: unchanged ? "unchanged" : "encode",
+            outputs: item.outputs.length,
+          };
+        }),
+        ...videoItems,
+      ];
       return {
         plan: outcome.plan,
         items,
@@ -126,6 +162,10 @@ export function createSession(options: SessionOptions): Session {
         onItemStart: handlers.onItemStart,
         onOutputDone: handlers.onOutput,
         onItemDone: (result) => handlers.onItemDone(result),
+        onVideoItemStart: handlers.onItemStart,
+        onVideoOutputDone: handlers.onOutput,
+        onVideoItemDone: (result) => handlers.onItemDone(result),
+        ...(handlers.onProgress ? { onVideoProgress: handlers.onProgress } : {}),
       });
       if (!outcome.result) {
         throw new BytecutError("BAD_ARGUMENTS", "Nothing was run.");

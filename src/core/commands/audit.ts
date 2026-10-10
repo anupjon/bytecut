@@ -28,6 +28,14 @@ import { scanReferences } from "../scan/references.js";
 import { toPosix } from "../posix.js";
 import { relative } from "node:path";
 import { engineFingerprint } from "./optimize.js";
+import { withVideos } from "./plan-media.js";
+import { checkVideoCache } from "../manifest/cache.js";
+import { estimateVideo } from "../audit/estimate-video.js";
+import { isFastStart } from "../video/probe.js";
+import type { VideoEngine } from "../video/types.js";
+import type { VideoFacts } from "../audit/types.js";
+import { classifyVideo } from "../classify/video.js";
+import { basename, dirname, extname } from "node:path";
 
 export interface AuditOptions {
   projectRoot: string;
@@ -44,6 +52,10 @@ export interface AuditOptions {
   persistCache?: boolean;
   /** Scan project text files for references (default true). */
   scanReferences?: boolean;
+  /** ffmpeg-backed engine, or null when ffmpeg is missing. Videos are then listed, not analysed. */
+  videoEngine?: VideoEngine | null;
+  /** What to install when ffmpeg is missing, e.g. "install ffmpeg with: brew install ffmpeg". */
+  needsFfmpeg?: string;
   /** Per-file preset by source path; wins over the classifier (the TUI's per-file choice). */
   presetOverrides?: Record<string, string>;
   /** Coarse progress for a UI; `total` is the number of raster files. */
@@ -53,6 +65,9 @@ export interface AuditOptions {
 /** One scanned raster file, as the TUI lists it. */
 export interface FileSummary {
   source: string;
+  /** `video` for videos and animated GIFs; absent means image. */
+  kind?: "image" | "video";
+  durationSec?: number;
   bytes: number;
   width: number;
   height: number;
@@ -73,6 +88,8 @@ export type AuditPhase = "scan" | "analyze" | "estimate" | "references";
 
 export interface AuditReport {
   findings: Finding[];
+  /** Videos that need ffmpeg and so were listed but not analysed (§4). */
+  unprobed: Array<{ source: string; bytes: number }>;
   /** Every raster file scanned, sorted by path. */
   files: FileSummary[];
   counts: { images: number; svgs: number; videos: number; skipped: number };
@@ -96,17 +113,21 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
   const fs = await SafeFs.create({
     projectRoot,
     outDir,
-    sourceFiles: [...found.files, ...found.svgs],
+    sourceFiles: [...found.files, ...found.svgs, ...found.videos],
     sourceDirs: found.sourceDirs,
   });
 
-  const cache = await AnalysisCache.load(fs, `${engineFingerprint(engine)};${svgEngine.version()}`);
+  const videoVersions = options.videoEngine ? await options.videoEngine.versions() : {};
+  const cache = await AnalysisCache.load(
+    fs,
+    `${engineFingerprint(engine, videoVersions)};${svgEngine.version()}`,
+  );
   const manifestData = await fs.readOutput(MANIFEST_FILE);
   const manifest: Manifest | null = manifestData
     ? parseManifest(manifestData.toString("utf8"))
     : null;
 
-  const total = found.files.length;
+  const total = found.files.length + found.videos.length;
   let analyzed = 0;
   options.onProgress?.({ phase: "scan", done: 0, total });
   const analyze = async (data: Buffer, digest: string): Promise<ImageAnalysis> => {
@@ -119,7 +140,7 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     return result;
   };
 
-  const plan = await buildPlan({
+  const imagePlan = await buildPlan({
     files: found.files,
     projectRoot,
     outDir,
@@ -139,6 +160,17 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     engine,
     analyze,
     readSource: (path) => fs.readSource(path),
+  });
+
+  const needsFfmpeg = options.needsFfmpeg ?? "install ffmpeg";
+  const plan = await withVideos(imagePlan, {
+    projectRoot,
+    staticRoot: options.staticRoot,
+    videoFiles: found.videos,
+    videoEngine: options.videoEngine ?? null,
+    needsFfmpeg,
+    presetOverrides: options.presetOverrides,
+    cache,
   });
 
   const outputHash = async (path: string) => {
@@ -198,6 +230,83 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
   }
   svgs.sort((a, b) => (a.source < b.source ? -1 : 1));
 
+  // Videos and animated GIFs: probed (cached by hash), then estimated with real sample encodes.
+  const videoFacts: VideoFacts[] = [];
+  const unprobed: Array<{ source: string; bytes: number }> = [];
+  const siblingImages = new Set([
+    ...images.map((i) => i.source),
+    ...skipped.map((i) => i.source),
+    ...plan.items.map((i) => i.source),
+  ]);
+  const missingCodecs = new Set<string>();
+  const caps = options.videoEngine ? await options.videoEngine.capabilities() : null;
+  if (caps) {
+    if (!caps.libsvtav1 && !caps.libaomAv1) missingCodecs.add("av1");
+    if (!caps.libx264) missingCodecs.add("h264");
+  }
+  let probed = 0;
+  for (const item of plan.videos ?? []) {
+    options.onProgress?.({ phase: "estimate", done: probed++, total });
+    if (item.skip) {
+      if (item.skip.reason.startsWith("needs ffmpeg")) {
+        unprobed.push({ source: item.source, bytes: item.sourceBytes });
+      } else {
+        skipped.push({
+          source: item.source,
+          bytes: item.sourceBytes,
+          reason: item.skip.reason,
+          animatedGif: false,
+        });
+      }
+      continue;
+    }
+    const probe = cache.getVideoProbe(item.sourceSha256);
+    if (!probe) continue;
+    const absolute = absoluteOf(item.source);
+    const cacheState = await checkVideoCache(
+      item,
+      manifest?.videos[item.source],
+      outputHash,
+      missingCodecs,
+    );
+    const isGif = extname(item.source).toLowerCase() === ".gif";
+    const covered = cacheState.kind === "hit";
+    const estimate =
+      covered || !options.videoEngine
+        ? null
+        : await estimateVideo(
+            item,
+            {
+              engine: options.videoEngine,
+              cache,
+              ffmpegVersion: videoVersions.ffmpeg ?? "unknown",
+            },
+            absolute,
+          );
+    const stem = `${dirname(item.source) === "." ? "" : `${dirname(item.source)}/`}${basename(item.source, extname(item.source))}`;
+    const hasPoster = ["jpg", "jpeg", "png", "webp", "avif"].some(
+      (ext) =>
+        siblingImages.has(`${stem}.${ext}`) ||
+        siblingImages.has(`${stem}-poster.${ext}`) ||
+        siblingImages.has(`${stem}_poster.${ext}`),
+    );
+    videoFacts.push({
+      source: item.source,
+      bytes: item.sourceBytes,
+      sha256: item.sourceSha256,
+      probe,
+      faststart: isGif ? null : await isFastStart(absolute).catch(() => null),
+      classification: isGif
+        ? { preset: "gif-to-video", confidence: "high", reason: "animated GIF" }
+        : classifyVideo(item.source, probe),
+      item,
+      cache: cacheState,
+      estimate,
+      hasPoster,
+      isGif,
+    });
+  }
+
   let references: Set<string> | null = null;
   if (options.scanReferences !== false) {
     const scan = await scanReferences({ cwd: projectRoot, outDir });
@@ -215,9 +324,18 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
       : { severity: raw, options: {} };
   };
 
+  const videoEncoders: Partial<Record<"av1" | "h264", string>> = {};
+  if (caps && videoVersions.ffmpeg) {
+    const av1 = caps.libsvtav1 ? "libsvtav1" : caps.libaomAv1 ? "libaom-av1" : null;
+    if (av1) videoEncoders.av1 = `${av1} (ffmpeg ${videoVersions.ffmpeg})`;
+    if (caps.libx264) videoEncoders.h264 = `libx264 (ffmpeg ${videoVersions.ffmpeg})`;
+  }
+
   const ctx: AuditContext = {
     plan,
     manifest,
+    videoEncoders,
+    unavailableCodecs: missingCodecs,
     encoders: engine.encoders(),
     outputHash,
     sourceExists: async (source) =>
@@ -225,7 +343,8 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     images,
     skipped,
     svgs,
-    videos: found.videos.map((v) => toPosix(relative(projectRoot, v))),
+    videos: videoFacts,
+    unprobed: unprobed.map((u) => ({ ...u, reason: `needs ffmpeg: ${needsFfmpeg}` })),
     references,
     budgets: options.budgets ?? {},
     ffmpeg: options.ffmpeg,
@@ -241,18 +360,28 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     }
   }
 
-  if (found.videos.length > 0) {
+  if (unprobed.length > 0) {
     notes.push(
-      `${found.videos.length} video file${found.videos.length === 1 ? "" : "s"} found but not analysed: video auditing arrives in M5.`,
+      `${unprobed.length} video file${unprobed.length === 1 ? "" : "s"} need ffmpeg to be analysed: ${needsFfmpeg}`,
     );
+  }
+  if (caps && !caps.libsvtav1 && !caps.libaomAv1 && videoFacts.length > 0) {
+    notes.push("No AV1 encoder installed: video estimates use H.264 only.");
   }
 
   if (options.persistCache !== false) await cache.save(fs);
 
-  const potential = images.reduce(
+  const potentialImages = images.reduce(
     (sum, image) => sum + (image.cache.kind === "hit" ? 0 : (savingOf(image) ?? 0)),
     0,
   );
+  const potentialVideos = videoFacts.reduce(
+    (sum, v) =>
+      sum +
+      (v.cache.kind === "hit" ? 0 : Math.max(0, v.bytes - (v.estimate?.best.bytes ?? v.bytes))),
+    0,
+  );
+  const potential = potentialImages + potentialVideos;
   const files: FileSummary[] = [
     ...images.map((image): FileSummary => ({
       source: image.source,
@@ -266,6 +395,36 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
       estimatedBytes: image.estimate?.best.bytes ?? null,
       savingsBytes: savingOf(image) ?? null,
       plannedOutputs: image.item.outputs.length,
+    })),
+    ...videoFacts.map((v): FileSummary => ({
+      source: v.source,
+      bytes: v.bytes,
+      width: v.probe.width,
+      height: v.probe.height,
+      format: v.isGif ? "gif" : v.probe.videoCodec,
+      kind: "video",
+      durationSec: v.probe.durationSec,
+      preset: v.item.preset,
+      reason: v.classification.reason,
+      covered: v.cache.kind === "hit",
+      estimatedBytes: v.estimate?.best.bytes ?? null,
+      savingsBytes: v.estimate ? Math.max(0, v.bytes - v.estimate.best.bytes) : null,
+      plannedOutputs: v.item.outputs.length,
+    })),
+    ...unprobed.map((u): FileSummary => ({
+      source: u.source,
+      bytes: u.bytes,
+      width: 0,
+      height: 0,
+      format: "-",
+      kind: "video",
+      preset: "-",
+      reason: "",
+      covered: false,
+      estimatedBytes: null,
+      savingsBytes: null,
+      plannedOutputs: 0,
+      skipped: `needs ffmpeg: ${needsFfmpeg}`,
     })),
     ...plan.items
       .filter((i) => i.skip)
@@ -287,18 +446,24 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
 
   return {
     findings: sortFindings(findings),
+    unprobed,
     files,
     counts: {
       images: images.length,
       svgs: svgs.length,
-      videos: found.videos.length,
+      videos: videoFacts.length + unprobed.length,
       skipped: skipped.length,
     },
     totals: {
       sourceBytes:
-        images.reduce((s, i) => s + i.bytes, 0) + skipped.reduce((s, i) => s + i.bytes, 0),
+        images.reduce((s, i) => s + i.bytes, 0) +
+        videoFacts.reduce((s, v) => s + v.bytes, 0) +
+        unprobed.reduce((s, u) => s + u.bytes, 0) +
+        skipped.reduce((s, i) => s + i.bytes, 0),
       potentialSavingsBytes: potential,
-      optimizedImages: images.filter((i) => i.cache.kind === "hit").length,
+      optimizedImages:
+        images.filter((i) => i.cache.kind === "hit").length +
+        videoFacts.filter((v) => v.cache.kind === "hit").length,
     },
     notes,
   };

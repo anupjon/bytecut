@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { BytecutError } from "../errors.js";
 import { formatZodIssues } from "../plan/schema.js";
-import { MANIFEST_VERSION, type Manifest } from "./types.js";
+import { MANIFEST_MIN_VERSION, MANIFEST_VERSION, type Manifest } from "./types.js";
 
 const outputSchema = z
   .object({
@@ -23,9 +23,37 @@ const outputSchema = z
   })
   .strict();
 
+const videoOutputSchema = z
+  .object({
+    path: z.string().min(1),
+    url: z.string(),
+    role: z.enum(["video", "poster"]),
+    format: z.enum(["mp4", "avif"]),
+    codec: z.enum(["av1", "h264"]).optional(),
+    width: z.number().int().nonnegative(),
+    height: z.number().int().nonnegative(),
+    fps: z.number().nonnegative().optional(),
+    bytes: z.number().int().nonnegative(),
+    sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    crf: z.number().int().optional(),
+    speed: z.string().optional(),
+    maxWidth: z.number().int().nullable().optional(),
+    maxFps: z.number().nullable().optional(),
+    audio: z.enum(["strip", "keep"]).optional(),
+    quality: z.number().int().optional(),
+    effort: z.number().int().optional(),
+    at: z.number().optional(),
+    encoder: z.string(),
+    status: z.enum(["written", "already-optimal", "stale"]),
+  })
+  .strict();
+
 const manifestSchema = z
   .object({
-    version: z.literal(MANIFEST_VERSION),
+    version: z.union([z.literal(2), z.literal(3)]),
     tools: z.record(z.string(), z.string()),
     publicPath: z.string(),
     sources: z.record(
@@ -41,6 +69,23 @@ const manifestSchema = z
         })
         .strict(),
     ),
+    // Absent in version 2.
+    videos: z
+      .record(
+        z.string(),
+        z
+          .object({
+            sha256: z.string().regex(/^[0-9a-f]{64}$/),
+            bytes: z.number().int().nonnegative(),
+            width: z.number().int().nonnegative(),
+            height: z.number().int().nonnegative(),
+            durationSec: z.number().nonnegative(),
+            preset: z.string(),
+            outputs: z.array(videoOutputSchema),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -56,7 +101,7 @@ export function parseManifest(text: string): Manifest {
     );
   }
   const version = (json as { version?: unknown } | null)?.version;
-  if (typeof version === "number" && version < MANIFEST_VERSION) {
+  if (typeof version === "number" && version < MANIFEST_MIN_VERSION) {
     throw new BytecutError(
       "MANIFEST_OUTDATED",
       `bytecut-manifest.json is version ${version}, written by a pre-release bytecut with an older output layout. Delete the output folder and re-run to regenerate it.`,
@@ -75,7 +120,12 @@ export function parseManifest(text: string): Manifest {
       `bytecut-manifest.json is not a valid manifest: ${formatZodIssues(result.error)}`,
     );
   }
-  return result.data as Manifest;
+  // Upgrade in memory: a v2 manifest is a v3 one with no videos.
+  return {
+    ...result.data,
+    version: MANIFEST_VERSION,
+    videos: result.data.videos ?? {},
+  } as Manifest;
 }
 
 /** Sorted keys and a trailing newline, so equal manifests are byte-identical. */
@@ -86,6 +136,9 @@ export function serializeManifest(manifest: Manifest): string {
     publicPath: manifest.publicPath,
     sources: Object.fromEntries(
       Object.entries(manifest.sources).sort(([a], [b]) => (a < b ? -1 : 1)),
+    ),
+    videos: Object.fromEntries(
+      Object.entries(manifest.videos).sort(([a], [b]) => (a < b ? -1 : 1)),
     ),
   };
   return `${JSON.stringify(sorted, null, 2)}\n`;

@@ -9,7 +9,8 @@
 | M2 Plan, manifest, cache            | Complete locally; CI not yet run |
 | M3 Scanner, classifier, audit       | Complete locally; CI not yet run |
 | M4 TUI                              | Complete locally; CI not yet run |
-| M5 – M9                             | Not started                      |
+| M5 Video                            | Complete locally; CI not yet run |
+| M6 – M9                             | Not started                      |
 
 ## M0 — what changed
 
@@ -145,54 +146,84 @@
   marker (`"optimize"` or `null`) instead of an always-null placeholder.
 - New dependencies (confirmed with you): `ink@8`, `react@19.3`, dev `@types/react`, `ink-testing-library`.
 
-## Verification (2026-10-10, Linux, Node 23.8)
+## M5 — what changed
 
-- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm test`: 418/418 pass in 34 files (~100 s; M3 was ~77 s).
-- **Driven under a real pseudo-terminal** (python `pty`, 30x100): scan, select, details, preset, review,
-  run, cancel, command bar with `/` and `@`, `/out ..` refusal, `/help`. Each found real bugs (below).
-- **Cancel verified on disk**: after Esc mid-run there were no temp files, every manifest entry matched
-  its file hash, and a follow-up run wrote exactly the remaining files with no warnings.
-- Component tests (ink-testing-library) cover list selection, review, run progress, cancel, command
-  bar and the output-folder prompt; a real-session test cancels a live run against a temp project.
+- **Engine** (`src/core/video/`, behind a `VideoEngine` interface): `probe` via `ffprobe -of json`,
+  `encode` with progress parsed from `-progress pipe:1` and cancellation (SIGTERM, then SIGKILL),
+  `sampleBytes` (a short clip encoded to a raw stream on stdout, so estimates write no file) and
+  `frame` (a PNG for the poster). Binary and capability resolution reuse M0 (`--ffmpeg`,
+  `BYTECUT_FFMPEG`, PATH). Arguments are always an array (§6.14); a hostile file name stays one argv.
+- **Writes stay in fs-safe**: ffmpeg writes a path it is given, so `SafeFs.reserveTemp/commitTemp/
+discardTemp` hand it a validated temp path inside outDir and only publish it atomically.
+- **Presets** `background-video` (silent, ≤1920 wide, ≤30 fps), `content-video` (keeps audio,
+  resolution and fps) and `gif-to-video`; AV1 (SVT-AV1 preset 6) + H.264 MP4, `+faststart`,
+  `yuv420p` with even dimensions, AVIF poster; fixed CRF per preset (the perceptual search is M9).
+- **Classifier**: silent + short → background; a backdrop-like name on a short clip → background
+  (and says its audio goes); anything else keeps its audio and resolution (§6.8).
+- **Plan / manifest**: `plan.videos` and `manifest.videos` are additive collections, so image code is
+  untouched. Manifest is **v3 and still reads v2**. The plan does not depend on installed encoders;
+  availability is resolved when it runs and reported then.
+- **Executor**: separate video lane (concurrency 1) beside the image lane; streaming hash for
+  sources; per-output reuse so a cancelled or partly-failed run resumes without repeating minutes of
+  encoding; §6.7 (never write larger than the source) and §6.6 (never overwrite what we don't own)
+  apply to videos.
+- **Degradation** (§4): no ffmpeg → listed as "needs ffmpeg" with the OS install command; no AV1
+  encoder → H.264 + poster still produced and the skip reported (`libsvtav1` preferred, `libaom-av1`
+  fallback); no `libvmaf` → fixed quality, and it says so. An AV1 output that can't be made does not
+  make the cache miss every run.
+- **Audit**: eight `video/*` rules; real sample-encode estimates cached by hash (a clip ≤4 s is
+  encoded whole, so exact); `gif/animated` now has a real estimate; videos that need ffmpeg are
+  listed by name. `stale-output`/`orphaned-output` cover videos, including encoder drift.
+- **Animated GIFs** are lifted out of the image plan and converted as video.
+- **CLI/TUI**: `optimize`/`audit` take `--ffmpeg/--ffprobe`; dry run prints video plans and
+  degradation notes; the TUI lists videos, plans them, shows live percent, and skipped videos with
+  what to install.
 
-### Bugs found by the walkthrough, not by unit tests
+## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
-- Preset overrides were forgotten by the rescan, so an optimized file reappeared as work to do.
-- A row slightly wider than the terminal wrapped and corrupted the layout (now explicit widths).
-- Pasted input arrived as one chunk and was silently ignored.
-- The `@` matcher ranked `gps-map.png` above `gps.jpg` (greedy match latched onto the `g` in `img/`).
-- The done screen leaked a per-output line into the totals.
-- A stale status message survived closing the command bar.
-- **Regression caught by the full suite**: citty runs the root command's `run` after every subcommand, so
-  `optimize`, `audit` and `doctor` were each followed by a bare-`bytecut` audit (polluting `--json`,
-  writing cache files, even scanning freshly written outputs as sources). The root `run` now bails out
-  when a subcommand was given, with a regression test.
+- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 588 tests in 45 files (~110 s;
+  M4 was ~100 s). One CPU-heavy integration test timed out at 30 s only under full-suite parallel load
+  (it passes alone in ~12 s), so it now has a 120 s timeout; the run before that change was 587/588.
+- **Real ffmpeg** (gated on its presence, with a visible skip notice): outputs verified with ffprobe
+  for codec, dimensions, pixel format, frame rate, audio presence/absence and faststart (moov
+  before mdat); AV1/H.264/poster byte-identical across two runs; a second run encodes nothing.
+- **Cancel kills ffmpeg**: with a real slow encode, abort rejects within seconds, no process with
+  the temp path remains (checked with `pgrep`), and no temp or partial file is left.
+- **Degradation with real binaries**: a wrapper `ffmpeg` that hides the AV1 encoders yields H.264 +
+  poster with the skip reported; a bad `--ffmpeg` path lists videos as needing ffmpeg while images
+  still process.
+- **Estimate accuracy**: an 8 s clip sampled at three points came within **11.6%** of the real AV1/
+  H.264 output (one clip: thin evidence).
+- Mutation-checked: writing larger-than-source outputs, leaving temp files, no per-output reuse,
+  counting unavailable codecs as misses, skipping the ownership check, and not killing ffmpeg each
+  fail the intended tests.
 
 ## Decisions
 
-See "Decisions log" in AGENTS.md. M4 additions: one row per file; report-only section; headless
-fallback prints the audit; `fix` marker on rules; overrides are session-only.
+See "Decisions log" in AGENTS.md. M5 additions: manifest v3 reads v2; video as additive collections;
+SVT-AV1 preset 6; estimates on by default and cached; capability-independent plans.
 
 ## Known issues
 
-- **"Manual walkthrough" is not a human walkthrough.** I drove the real binary through a pty and
-  read its frames, which is thorough but is not someone using a terminal emulator. You should do the
-  final pass in a real terminal (resize, colours, a very narrow window, a slow disk).
-- **Preset overrides last for the session only.** The audit after quitting will classify the file
-  again and call it un-optimized. Persisting choices is the M7 "save these choices?" prompt.
-- **Cancel waits for the in-flight encode** (sharp cannot be interrupted): up to a few seconds for a
-  large AVIF. The UI says so while it waits.
-- **No terminal-resize handling beyond Ink's re-render**; very narrow terminals (<60 cols) will truncate
-  paths heavily and were not tested.
-- **The TUI scan is the audit**: cold scans of big projects show a counter, not per-file names, and
-  cost the same as `bytecut audit` (~10 s per 200 small images).
-- **`/doctor` reads once per open** and is not refreshed; `/quit` and `q` while a run is queued are not
-  distinguished from cancel.
-- **Carried over**: SVG output is still unimplemented and unowned by a milestone; animated GIFs are
-  report-only until M5; `--json` is dry-run only; no `--prune`; no locking; `.gitignore` coverage is
-  partial; detection is cwd-only; CI, macOS/Windows and a real SIGINT are unverified.
+- **CRF values are first guesses** (AV1 32/36/38, H.264 23/26/28), as are the classifier's name tokens
+  and the 45 s "short" limit. Bad guesses cost bytes or quality, not data.
+- **The video estimate is one number from three 1.5 s samples**, a real encode but a thin sample of
+  a long, varied video. Verified on a single clip. Estimates are labelled `~`.
+- **Cold video audits are slow**: six tiny clips took ~11 s; a long 1080p library will take minutes.
+  Results are cached by hash, and the TUI shows scan progress, not per-file names.
+- **AV1 is roughly realtime at preset 6** on this machine (3 s of 640x360 in 2.8 s), so long videos
+  take minutes. Cancelling is prompt (ffmpeg is killed), unlike the image engine.
+- **Windows/macOS ffmpeg builds are untested**: the Windows runner's ffmpeg may lack `libsvtav1`;
+  capability-gated tests should skip or degrade, but this has not run there.
+- **The poster uses a frame at 10% of the duration**; no "best frame" detection, so it can be a
+  blank frame for a video that fades in slowly.
+- **HDR, rotation metadata, multiple audio tracks and subtitles are not handled specially**: the first
+  video and first audio stream are used, and rotation relies on ffmpeg's default autorotate.
+- **No VMAF search** (M9): `libvmaf` only changes the note, never the output.
+- **Carried over**: SVG output still unimplemented; `--json` dry-run only; no `--prune`; no locking;
+  `.gitignore` coverage partial; detection cwd-only; CI, macOS/Windows and a real SIGINT unverified.
 
 ## Next
 
-M5 — video (ffprobe, AV1 + H.264, posters, degradation paths). New runtime binary dependencies are
-the user's own ffmpeg, so expect questions about fixtures and CI, not packages.
+M6 — web outputs: `<picture>`/`<video>` snippets (HTML and JSX), placeholders in the manifest
+(blurhash/LQIP/dominant colour) and `priority` presets. Needs a confirmed plan first (§10).

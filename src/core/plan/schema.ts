@@ -50,6 +50,58 @@ const itemSchema = z
   })
   .strict();
 
+const videoOutputSchema = z.discriminatedUnion("role", [
+  z
+    .object({
+      role: z.literal("video"),
+      path: safeRelativePath,
+      codec: z.enum(["av1", "h264"]),
+      width: z.number().int().positive(),
+      crf: z.number().int().min(0).max(63),
+      speed: z.string().min(1),
+      maxWidth: z.number().int().positive().nullable(),
+      maxFps: z.number().positive().nullable(),
+      audio: z.enum(["strip", "keep"]),
+      audioBitrate: z.string().regex(/^\d+k$/),
+    })
+    .strict(),
+  z
+    .object({
+      role: z.literal("poster"),
+      path: safeRelativePath,
+      format: z.literal("avif"),
+      width: z.number().int().positive(),
+      quality: z.number().int().min(1).max(100),
+      effort: z.number().int().min(0).max(9),
+      at: z.number().min(0).max(1),
+    })
+    .strict(),
+]);
+
+const videoItemSchema = z
+  .object({
+    source: safeRelativePath,
+    sourceBytes: z.number().int().nonnegative(),
+    sourceSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    sourceWidth: z.number().int().nonnegative(),
+    sourceHeight: z.number().int().nonnegative(),
+    durationSec: z.number().nonnegative(),
+    fps: z.number().nonnegative(),
+    hasAudio: z.boolean(),
+    videoCodec: z.string(),
+    preset: z.string().min(1),
+    classification: z
+      .object({
+        reason: z.string(),
+        confidence: z.enum(["high", "medium", "low"]).optional(),
+      })
+      .strict()
+      .optional(),
+    outputs: z.array(videoOutputSchema),
+    skip: z.object({ reason: z.string() }).strict().optional(),
+  })
+  .strict();
+
 export const planSchema = z
   .object({
     version: z.literal(1),
@@ -60,17 +112,20 @@ export const planSchema = z
       .refine((p) => !p.startsWith("/") && !/^[A-Za-z]:/.test(p) && !p.includes("\\")),
     publicPath: z.string().min(1),
     items: z.array(itemSchema),
+    videos: z.array(videoItemSchema).optional(),
   })
   .strict()
   .superRefine((plan, ctx) => {
     const seen = new Set<string>();
-    for (const item of plan.items) {
-      for (const out of item.outputs) {
-        if (seen.has(out.path)) {
-          ctx.addIssue({ code: "custom", message: `duplicate output path ${out.path}` });
-        }
-        seen.add(out.path);
+    const outputs = [
+      ...plan.items.flatMap((i) => i.outputs),
+      ...(plan.videos ?? []).flatMap((v) => v.outputs),
+    ];
+    for (const out of outputs) {
+      if (seen.has(out.path)) {
+        ctx.addIssue({ code: "custom", message: `duplicate output path ${out.path}` });
       }
+      seen.add(out.path);
     }
   });
 

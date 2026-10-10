@@ -14,6 +14,14 @@ import { oversizedDimensions } from "./oversized-dimensions.js";
 import { photoAsPng } from "./photo-as-png.js";
 import { reencodeSavings } from "./reencode-savings.js";
 import { staleOutput } from "./stale-output.js";
+import { videoAudioInBackground } from "./video-audio-in-background.js";
+import { videoHighBitrate } from "./video-high-bitrate.js";
+import { videoHighFps } from "./video-high-fps.js";
+import { videoNoFallback } from "./video-no-fallback.js";
+import { videoNoFaststart } from "./video-no-faststart.js";
+import { videoNoModernCodec } from "./video-no-modern-codec.js";
+import { videoNoPoster } from "./video-no-poster.js";
+import { videoOversizedResolution } from "./video-oversized-resolution.js";
 import { svgUnminified } from "./unminified.js";
 import { unreferenced } from "./unreferenced.js";
 
@@ -34,6 +42,14 @@ export const ALL_RULES: AuditRule[] = [
   svgEmbeddedRaster,
   gifAnimated,
   gifStatic,
+  videoNoModernCodec,
+  videoNoFallback,
+  videoOversizedResolution,
+  videoHighFps,
+  videoHighBitrate,
+  videoAudioInBackground,
+  videoNoFaststart,
+  videoNoPoster,
   duplicate,
   unreferenced,
   overBudget,

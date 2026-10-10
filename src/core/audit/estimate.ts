@@ -89,3 +89,9 @@ export async function estimateItem(
   const best = perFormat.reduce((a, b) => (b.bytes < a.bytes ? b : a));
   return { best, perFormat };
 }
+
+/** Estimated size of the best (smallest) video output; same idea as `ItemEstimate`. */
+export interface VideoEstimate {
+  best: { codec: "av1" | "h264"; bytes: number; basis: "exact" | "extrapolated" };
+  perCodec: Array<{ codec: "av1" | "h264"; bytes: number; basis: "exact" | "extrapolated" }>;
+}

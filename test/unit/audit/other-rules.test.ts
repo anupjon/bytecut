@@ -7,7 +7,7 @@ import { overBudget, servedBytes } from "../../../src/core/audit/rules/over-budg
 import { svgUnminified } from "../../../src/core/audit/rules/unminified.js";
 import { unreferenced } from "../../../src/core/audit/rules/unreferenced.js";
 import type { Manifest } from "../../../src/core/manifest/types.js";
-import { context, estimate, image, svg } from "../../audit-helpers.js";
+import { context, estimate, image, svg, video } from "../../audit-helpers.js";
 
 describe("svg/unminified", () => {
   it("flags files svgo shrinks meaningfully", async () => {
@@ -61,25 +61,37 @@ describe("svg/embedded-raster", () => {
 });
 
 describe("gif/animated", () => {
-  const skipped = [
-    { source: "a.gif", bytes: 900_000, reason: "animated GIF (…)", animatedGif: true },
-    { source: "b.webp", bytes: 10, reason: "animated image", animatedGif: false },
-    { source: "c.jpg", bytes: 10, reason: "unreadable or corrupt image", animatedGif: false },
-  ];
-
-  it("flags animated GIFs only", async () => {
-    const f = await gifAnimated.check(context({ skipped }));
-    expect(f.map((x) => x.source)).toEqual(["a.gif"]);
-    expect(f[0]).not.toHaveProperty("savingsBytes");
+  it("flags animated GIFs with a real estimate when ffmpeg is available", async () => {
+    const gif = video({ source: "a.gif", bytes: 900_000, isGif: true });
+    const f = await gifAnimated.check(context({ videos: [gif] }));
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({
+      source: "a.gif",
+      current: 900_000,
+      estimated: 180_000,
+      savingsBytes: 720_000,
+    });
   });
 
-  it("tells the user to install ffmpeg, with the command, when it is missing (§4)", async () => {
+  it("ignores ordinary videos and GIFs that already have up-to-date outputs", async () => {
+    const mp4 = video({ source: "a.mp4" });
+    const done = video({ source: "b.gif", isGif: true, cache: { kind: "hit" } });
+    expect(await gifAnimated.check(context({ videos: [mp4, done] }))).toEqual([]);
+  });
+
+  it("lists GIFs that could not be probed, with what to install (§4)", async () => {
     const f = await gifAnimated.check(
-      context({ skipped, ffmpeg: { found: false, installHint: "brew install ffmpeg" } }),
+      context({
+        unprobed: [
+          { source: "x.gif", bytes: 500, reason: "needs ffmpeg" },
+          { source: "y.mp4", bytes: 500, reason: "needs ffmpeg" },
+        ],
+        ffmpeg: { found: false, installHint: "brew install ffmpeg" },
+      }),
     );
+    expect(f.map((x) => x.source)).toEqual(["x.gif"]);
     expect(f[0]!.message).toMatch(/Needs ffmpeg: brew install ffmpeg/);
-    const have = await gifAnimated.check(context({ skipped }));
-    expect(have[0]!.message).not.toMatch(/Needs ffmpeg/);
+    expect(f[0]).not.toHaveProperty("savingsBytes");
   });
 });
 
@@ -158,9 +170,10 @@ describe("project/unreferenced", () => {
 
 describe("project/over-budget", () => {
   const manifest = (width: number, bytes: number): Manifest => ({
-    version: 2,
+    version: 3,
     tools: {},
     publicPath: "/_bytecut",
+    videos: {},
     sources: {
       "img/a.jpg": {
         sha256: "a".repeat(64),

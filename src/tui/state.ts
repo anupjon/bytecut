@@ -1,6 +1,6 @@
 import type { Finding } from "../core/audit/types.js";
 import type { AuditPhase } from "../core/commands/audit.js";
-import type { OutputResult, RunResult } from "../core/execute/run.js";
+import type { OutputResult, RunResult, VideoOutputResult } from "../core/execute/run.js";
 import type { Plan } from "../core/plan/types.js";
 import { defaultSelection, type Model, type Row } from "./model.js";
 
@@ -32,7 +32,9 @@ export interface RunProgress {
   done: number;
   current: string | null;
   /** One line per resolved output, newest last. */
-  log: Array<{ source: string; output: OutputResult }>;
+  log: Array<{ source: string; output: OutputResult | VideoOutputResult }>;
+  /** Latest encode progress per video output path, 0..1. */
+  progress: Record<string, number>;
 }
 
 export interface State {
@@ -103,7 +105,8 @@ export type Action =
   | { type: "review-ready"; review: Review }
   | { type: "run-start"; total: number }
   | { type: "run-item-start"; source: string }
-  | { type: "run-output"; source: string; output: OutputResult }
+  | { type: "run-output"; source: string; output: OutputResult | VideoOutputResult }
+  | { type: "run-progress"; path: string; fraction: number }
   | { type: "run-item-done" }
   | { type: "run-done"; result: RunResult }
   | { type: "rescan" }
@@ -237,7 +240,7 @@ export function reducer(state: State, action: Action): State {
         view: "running",
         overlay: null,
         cancelling: false,
-        run: { total: action.total, done: 0, current: null, log: [] },
+        run: { total: action.total, done: 0, current: null, log: [], progress: {} },
       };
 
     case "run-item-start":
@@ -250,6 +253,17 @@ export function reducer(state: State, action: Action): State {
             run: {
               ...state.run,
               log: [...state.run.log, { source: action.source, output: action.output }],
+            },
+          }
+        : state;
+
+    case "run-progress":
+      return state.run
+        ? {
+            ...state,
+            run: {
+              ...state.run,
+              progress: { ...state.run.progress, [action.path]: action.fraction },
             },
           }
         : state;

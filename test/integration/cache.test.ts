@@ -157,7 +157,7 @@ describe("cache (M2)", () => {
     const root = await project();
     await run(root, countingEngine().engine, { publicPath: "/static/img" });
     const manifest = await readManifest(root);
-    expect(manifest.version).toBe(2);
+    expect(manifest.version).toBe(3);
     expect(manifest.publicPath).toBe("/static/img");
     expect(manifest.tools).toMatchObject({
       bytecut: "test",

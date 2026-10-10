@@ -437,7 +437,7 @@ describe("zero-config CLI: detection and audit (M3)", () => {
     const manifest = JSON.parse(
       await readFile(join(root, "public/_bytecut/bytecut-manifest.json"), "utf8"),
     );
-    expect(manifest.version).toBe(2);
+    expect(manifest.version).toBe(3);
     expect(manifest.sources["public/img/small.jpg"].outputs[0].url).toBe(
       "/_bytecut/img/small/small-300.avif",
     );

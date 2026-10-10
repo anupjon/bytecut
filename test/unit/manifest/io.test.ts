@@ -5,9 +5,10 @@ import type { Manifest } from "../../../src/core/manifest/types.js";
 const sha = (c: string) => c.repeat(64);
 
 export const sample: Manifest = {
-  version: 2,
+  version: 3,
   tools: { sharp: "0.35.5", bytecut: "0.0.1" },
   publicPath: "/_bytecut",
+  videos: {},
   sources: {
     "b/two.jpg": {
       sha256: sha("b"),
@@ -72,7 +73,7 @@ describe("parseManifest", () => {
 
   it("rejects a newer version with an upgrade hint", () => {
     try {
-      parseManifest(JSON.stringify({ version: 3 }));
+      parseManifest(JSON.stringify({ version: 4 }));
       expect.unreachable();
     } catch (error) {
       expect(error).toMatchObject({ code: "MANIFEST_UNSUPPORTED" });
@@ -87,6 +88,53 @@ describe("parseManifest", () => {
       expect(error).toMatchObject({ code: "MANIFEST_OUTDATED" });
       expect((error as Error).message).toMatch(/Delete the output folder/);
     }
+  });
+
+  it("reads a version-2 manifest and upgrades it in memory with no videos", () => {
+    const { videos: _videos, ...v2 } = { ...sample, version: 2 as const };
+    void _videos;
+    const parsed = parseManifest(JSON.stringify(v2));
+    expect(parsed.version).toBe(3);
+    expect(parsed.videos).toEqual({});
+    expect(parsed.sources).toEqual(sample.sources);
+  });
+
+  it("round-trips video entries", () => {
+    const withVideo = {
+      ...sample,
+      videos: {
+        "v/a.mp4": {
+          sha256: "e".repeat(64),
+          bytes: 5000,
+          width: 1920,
+          height: 1080,
+          durationSec: 3,
+          preset: "content-video",
+          outputs: [
+            {
+              path: "v/a/a-1920.av1.mp4",
+              url: "/_bytecut/v/a/a-1920.av1.mp4",
+              role: "video" as const,
+              format: "mp4" as const,
+              codec: "av1" as const,
+              width: 1920,
+              height: 1080,
+              fps: 30,
+              bytes: 900,
+              sha256: "f".repeat(64),
+              crf: 32,
+              speed: "6",
+              maxWidth: null,
+              maxFps: null,
+              audio: "keep" as const,
+              encoder: "libsvtav1 (ffmpeg 6.1.1)",
+              status: "written" as const,
+            },
+          ],
+        },
+      },
+    };
+    expect(parseManifest(serializeManifest(withVideo))).toEqual(withVideo);
   });
 
   it("rejects a malformed manifest with a readable reason", () => {

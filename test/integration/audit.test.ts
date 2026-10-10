@@ -54,10 +54,19 @@ describe("audit of a fixture project", () => {
     );
   });
 
-  it("counts what it scanned and notes the unanalysed video", async () => {
-    const report = await run(await project());
-    expect(report.counts).toEqual({ images: 10, svgs: 2, videos: 1, skipped: 1 });
-    expect(report.notes.join(" ")).toMatch(/1 video file found but not analysed/);
+  it("counts what it scanned, and lists videos it could not analyse without ffmpeg (§4)", async () => {
+    // No video engine: the animated GIF and the .mp4 are both listed as needing ffmpeg.
+    const report = await run(await project(), {
+      needsFfmpeg: "install ffmpeg with: apt install ffmpeg",
+    });
+    expect(report.counts).toEqual({ images: 10, svgs: 2, videos: 2, skipped: 0 });
+    expect(report.unprobed.map((u) => u.source).sort()).toEqual([
+      "public/clip.mp4",
+      "public/img/loader.gif",
+    ]);
+    expect(report.notes.join(" ")).toMatch(
+      /2 video files need ffmpeg to be analysed: install ffmpeg/,
+    );
     expect(report.totals.potentialSavingsBytes).toBeGreaterThan(0);
     expect(report.totals.optimizedImages).toBe(0);
   });
@@ -212,7 +221,7 @@ describe("audit after optimize", () => {
         (f) => f.ruleId === "project/stale-output" && f.source === "public/img/hero.jpg",
       ),
     ).toBe(true);
-  });
+  }, 120_000);
 });
 
 describe("references", () => {

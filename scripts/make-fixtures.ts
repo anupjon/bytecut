@@ -1,4 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -226,8 +228,164 @@ export async function makeAuditProject(dir: string): Promise<string[]> {
   return files.map(([path]) => path).sort();
 }
 
+const execFileAsync = promisify(execFile);
+
+export const VIDEO_FIXTURES = [
+  "with-audio.mp4",
+  "silent.mp4",
+  "fps60.mp4",
+  "faststart.mp4",
+  "big.mp4",
+  "loop.gif",
+  "heavy.mp4",
+  "heavy-silent.mp4",
+  "heavy-60fps.mp4",
+  "long.mp4",
+] as const;
+
+/** Whether `ffmpeg` can be run; fixtures and ffmpeg-dependent tests skip when it can't. */
+export async function hasFfmpeg(path = "ffmpeg"): Promise<boolean> {
+  try {
+    await execFileAsync(path, ["-version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Synthetic video fixtures (§8): each ≤3 s and well under 1 MB. Returns null, writing
+ * nothing, when ffmpeg is unavailable. `with-audio.mp4` and the rest are deliberately NOT
+ * faststart except `faststart.mp4`, so the non-faststart rule has both cases.
+ */
+export async function makeVideoFixtures(
+  dir: string,
+  ffmpeg = "ffmpeg",
+): Promise<readonly string[] | null> {
+  if (!(await hasFfmpeg(ffmpeg))) return null;
+  await mkdir(dir, { recursive: true });
+  const run = (...args: string[]) =>
+    execFileAsync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", ...args]);
+  const video = (size: string, rate: number, seconds: number) => [
+    "-f",
+    "lavfi",
+    "-i",
+    `testsrc2=size=${size}:rate=${rate}:duration=${seconds}`,
+  ];
+  const audio = (seconds: number) => [
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=440:duration=${seconds}`,
+  ];
+  // Fixed settings so repeated generation produces the same bytes.
+  const x264 = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-pix_fmt", "yuv420p"];
+  const det = ["-map_metadata", "-1", "-fflags", "+bitexact", "-flags:v", "+bitexact"];
+
+  await run(
+    ...video("320x240", 30, 3),
+    ...audio(3),
+    ...x264,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "64k",
+    "-t",
+    "3",
+    ...det,
+    join(dir, "with-audio.mp4"),
+  );
+  await run(
+    ...video("320x240", 30, 3),
+    ...x264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    ...det,
+    join(dir, "silent.mp4"),
+  );
+  await run(...video("320x240", 60, 2), ...x264, "-an", ...det, join(dir, "fps60.mp4"));
+  await run(
+    ...video("320x240", 30, 2),
+    ...audio(2),
+    ...x264,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "64k",
+    "-t",
+    "2",
+    "-movflags",
+    "+faststart",
+    ...det,
+    join(dir, "faststart.mp4"),
+  );
+  await run(
+    ...video("2560x1440", 10, 1),
+    ...x264,
+    "-crf",
+    "40",
+    "-an",
+    ...det,
+    join(dir, "big.mp4"),
+  );
+  await run(
+    ...video("160x120", 10, 2),
+    "-vf",
+    "split[a][b];[a]palettegen[p];[b][p]paletteuse",
+    "-loop",
+    "0",
+    join(dir, "loop.gif"),
+  );
+
+  // Over-encoded on purpose (low CRF), so a re-encode at the presets' quality really is smaller.
+  const rich = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p"];
+  await run(
+    ...video("320x240", 30, 3),
+    ...audio(3),
+    ...rich,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-t",
+    "3",
+    ...det,
+    join(dir, "heavy.mp4"),
+  );
+  await run(...video("320x240", 30, 3), ...rich, "-an", ...det, join(dir, "heavy-silent.mp4"));
+  await run(...video("320x240", 60, 2), ...rich, "-an", ...det, join(dir, "heavy-60fps.mp4"));
+  // Longer than the exact-estimate limit, so the sampled estimator is exercised.
+  await run(
+    ...video("320x240", 25, 8),
+    ...x264,
+    "-crf",
+    "16",
+    "-an",
+    ...det,
+    join(dir, "long.mp4"),
+  );
+
+  // Report what was actually written, so a missing file can never be silently claimed.
+  const present = await Promise.all(
+    VIDEO_FIXTURES.map(async (name) =>
+      (await stat(join(dir, name)).catch(() => null)) ? name : null,
+    ),
+  );
+  const missing = VIDEO_FIXTURES.filter((_, i) => present[i] === null);
+  if (missing.length > 0) throw new Error(`video fixtures not created: ${missing.join(", ")}`);
+  return VIDEO_FIXTURES;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const dir = resolve("test/fixtures/images");
   const names = await makeImageFixtures(dir);
-  console.log(`Wrote ${names.length} fixtures to ${dir}`);
+  console.log(`Wrote ${names.length} image fixtures to ${dir}`);
+  const videoDir = resolve("test/fixtures/video");
+  const videos = await makeVideoFixtures(videoDir);
+  console.log(
+    videos
+      ? `Wrote ${videos.length} video fixtures to ${videoDir}`
+      : "ffmpeg not found: skipped video fixtures",
+  );
 }

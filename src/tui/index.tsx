@@ -1,6 +1,7 @@
 import { render } from "ink";
 import type { ImageEngine } from "../core/engines/types.js";
 import type { SvgEngine } from "../core/engines/svg.js";
+import type { VideoEngine } from "../core/video/types.js";
 import type { ProjectInfo } from "../core/scan/detect.js";
 import { App } from "./app.js";
 import { createSession, type Session } from "./session.js";
@@ -14,6 +15,8 @@ export interface RunTuiOptions {
   svgEngine: SvgEngine;
   toolVersion: string;
   ffmpeg: { found: boolean; installHint: string };
+  videoEngine?: VideoEngine | null;
+  needsFfmpeg?: string;
   loadDoctor: () => Promise<string>;
   /** Tests inject a session to avoid touching the file system through the core. */
   session?: Session;
@@ -31,6 +34,8 @@ export async function runTui(options: RunTuiOptions): Promise<void> {
       inputs: options.inputs,
       toolVersion: options.toolVersion,
       ffmpeg: options.ffmpeg,
+      videoEngine: options.videoEngine ?? null,
+      ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
     });
 
   // Ctrl+C is handled by the app: it cancels a run first, and only quits when idle.

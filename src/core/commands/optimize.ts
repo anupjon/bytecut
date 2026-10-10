@@ -5,17 +5,26 @@ import type { Finding } from "../audit/types.js";
 import { AnalysisCache } from "../cache/store.js";
 import { classify } from "../classify/classify.js";
 import type { ImageAnalysis, ImageEngine } from "../engines/types.js";
-import { runPlan, type ItemResult, type OutputResult, type RunResult } from "../execute/run.js";
+import {
+  runPlan,
+  type ItemResult,
+  type OutputResult,
+  type RunResult,
+  type VideoItemResult,
+  type VideoOutputResult,
+} from "../execute/run.js";
 import { SafeFs } from "../fs-safe.js";
 import { sha256 } from "../hash.js";
-import { checkCache, type CacheState } from "../manifest/cache.js";
+import { checkCache, checkVideoCache, type CacheState } from "../manifest/cache.js";
 import { parseManifest, serializeManifest } from "../manifest/io.js";
 import { MANIFEST_FILE, type Manifest } from "../manifest/types.js";
 import { updateManifest } from "../manifest/update.js";
 import { buildPlan, DEFAULT_PUBLIC_PATH, type PresetChoice } from "../plan/build.js";
+import { withVideos } from "./plan-media.js";
 import type { Plan } from "../plan/types.js";
 import { getImagePreset } from "../presets/index.js";
 import { collectAssets } from "../scan/collect.js";
+import type { VideoEngine } from "../video/types.js";
 
 export interface OptimizeOptions {
   projectRoot: string;
@@ -41,6 +50,15 @@ export interface OptimizeOptions {
   onItemStart?(source: string): void;
   onOutputDone?(source: string, output: OutputResult): void;
   onItemDone?(result: ItemResult, done: number, total: number): void;
+  /** Video lane. Absent engine means "no ffmpeg": videos are listed, not processed. */
+  videoEngine?: VideoEngine | null;
+  /** What to tell the user to install when there is no ffmpeg. */
+  needsFfmpeg?: string;
+  videoConcurrency?: number;
+  onVideoItemStart?(source: string): void;
+  onVideoProgress?(source: string, path: string, fraction: number): void;
+  onVideoOutputDone?(source: string, output: VideoOutputResult): void;
+  onVideoItemDone?(result: VideoItemResult, done: number, total: number): void;
 }
 
 export interface OptimizeOutcome {
@@ -54,12 +72,14 @@ export interface OptimizeOutcome {
   /** Found but not handled by `optimize`: SVGs and videos (absolute paths). */
   svgs: string[];
   videos: string[];
+  /** Degradations and other things worth saying before anything runs (§4). */
+  notes: string[];
   /** Present only when `execute` was true. */
   result?: RunResult;
 }
 
-export function engineFingerprint(engine: ImageEngine): string {
-  const v = engine.versions();
+export function engineFingerprint(engine: ImageEngine, extra: Record<string, string> = {}): string {
+  const v = { ...engine.versions(), ...extra };
   return Object.keys(v)
     .sort()
     .map((k) => `${k}=${v[k]}`)
@@ -79,15 +99,17 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
 
   // Reads of sources and writes both go through the same SafeFs, created from the file list.
   if (plan) {
-    sourceFiles = plan.items.map((i) => resolve(projectRoot, ...i.source.split("/")));
+    sourceFiles = [...plan.items, ...(plan.videos ?? [])].map((i) =>
+      resolve(projectRoot, ...i.source.split("/")),
+    );
   } else {
     const found = await collectAssets(options.inputs ?? [], { cwd: projectRoot, outDir });
-    sourceFiles = found.files;
+    sourceFiles = [...found.files, ...found.videos];
     sourceDirs = found.sourceDirs;
     unsupported = found.unsupported;
     svgs = found.svgs;
     videos = found.videos;
-    if (found.files.length === 0) {
+    if (found.files.length === 0 && found.videos.length === 0) {
       return {
         plan: {
           version: 1,
@@ -100,6 +122,7 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
         unsupported,
         svgs,
         videos,
+        notes: [],
       };
     }
   }
@@ -107,7 +130,8 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
   const fs = await SafeFs.create({ projectRoot, outDir, sourceFiles, sourceDirs });
 
   // Analysis (a pixel decode) is cached by content hash; a cold run just computes it.
-  const analysisCache = await AnalysisCache.load(fs, engineFingerprint(engine));
+  const videoVersions = options.videoEngine ? await options.videoEngine.versions() : {};
+  const analysisCache = await AnalysisCache.load(fs, engineFingerprint(engine, videoVersions));
   const analyze = async (data: Buffer, digest: string): Promise<ImageAnalysis> => {
     const cached = analysisCache.getAnalysis(digest);
     if (cached) return cached;
@@ -134,8 +158,9 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
   };
 
   if (!plan) {
+    const rasterFiles = sourceFiles.filter((f) => !videos.includes(f));
     plan = await buildPlan({
-      files: sourceFiles,
+      files: rasterFiles,
       projectRoot,
       outDir,
       ...(options.staticRoot !== undefined ? { staticRoot: options.staticRoot } : {}),
@@ -144,6 +169,16 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
       engine,
       analyze,
       readSource: (path) => fs.readSource(path),
+    });
+
+    plan = await withVideos(plan, {
+      projectRoot,
+      staticRoot: options.staticRoot ?? ".",
+      videoFiles: videos,
+      videoEngine: options.videoEngine ?? null,
+      needsFfmpeg: options.needsFfmpeg ?? "install ffmpeg",
+      presetOverrides: options.presetOverrides,
+      cache: analysisCache,
     });
   }
 
@@ -159,11 +194,34 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     if (item.skip) continue;
     cache.set(item.source, await checkCache(item, manifest?.sources[item.source], outputHash));
   }
+  const caps = options.videoEngine ? await options.videoEngine.capabilities() : null;
+  const missingCodecs = new Set<string>();
+  if (caps) {
+    if (!caps.libsvtav1 && !caps.libaomAv1) missingCodecs.add("av1");
+    if (!caps.libx264) missingCodecs.add("h264");
+  }
+  const notes = videoNotes(finalPlan, caps, options.needsFfmpeg);
+  for (const item of finalPlan.videos ?? []) {
+    if (item.skip) continue;
+    cache.set(
+      item.source,
+      await checkVideoCache(item, manifest?.videos[item.source], outputHash, missingCodecs),
+    );
+  }
 
+  const ffmpegVersion = videoVersions.ffmpeg;
+  const videoEncoders: Partial<Record<"av1" | "h264", string>> = {};
+  if (caps && ffmpegVersion) {
+    const av1 = caps.libsvtav1 ? "libsvtav1" : caps.libaomAv1 ? "libaom-av1" : null;
+    if (av1) videoEncoders.av1 = `${av1} (ffmpeg ${ffmpegVersion})`;
+    if (caps.libx264) videoEncoders.h264 = `libx264 (ffmpeg ${ffmpegVersion})`;
+  }
   const audit = (current: Manifest | null) =>
     runProjectRules({
       plan: finalPlan,
       manifest: current,
+      videoEncoders,
+      unavailableCodecs: missingCodecs,
       encoders: engine.encoders(),
       outputHash,
       sourceExists: async (source) =>
@@ -173,7 +231,15 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
 
   if (!options.execute) {
     // A dry run stays read-only: the analysis cache is used but not persisted.
-    return { plan: finalPlan, cache, findings: await audit(manifest), unsupported, svgs, videos };
+    return {
+      plan: finalPlan,
+      cache,
+      findings: await audit(manifest),
+      unsupported,
+      svgs,
+      videos,
+      notes,
+    };
   }
 
   const result = await runPlan(finalPlan, {
@@ -187,6 +253,21 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     ...(options.onItemStart ? { onItemStart: options.onItemStart } : {}),
     ...(options.onOutputDone ? { onOutputDone: options.onOutputDone } : {}),
     ...(options.onItemDone ? { onItemDone: options.onItemDone } : {}),
+    ...(options.videoEngine
+      ? {
+          video: {
+            engine: options.videoEngine,
+            ...(options.videoConcurrency !== undefined
+              ? { concurrency: options.videoConcurrency }
+              : {}),
+            ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
+          },
+        }
+      : {}),
+    ...(options.onVideoItemStart ? { onVideoItemStart: options.onVideoItemStart } : {}),
+    ...(options.onVideoProgress ? { onVideoProgress: options.onVideoProgress } : {}),
+    ...(options.onVideoOutputDone ? { onVideoOutputDone: options.onVideoOutputDone } : {}),
+    ...(options.onVideoItemDone ? { onVideoItemDone: options.onVideoItemDone } : {}),
   });
 
   const updated = updateManifest(manifest, finalPlan, result, {
@@ -196,7 +277,9 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
 
   // Only touch the manifest when its content changed, so an unchanged run is a no-op in git.
   // `tools` is informational and ignored for that comparison.
-  const touched = result.items.some((i) => i.status !== "skipped");
+  const touched =
+    result.items.some((i) => i.status !== "skipped") ||
+    (result.videos ?? []).some((v) => v.status !== "skipped");
   if (touched) {
     const next = serializeManifest(updated);
     const previous = manifest ? serializeManifest({ ...manifest, tools: updated.tools }) : null;
@@ -211,6 +294,7 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     unsupported,
     svgs,
     videos,
+    notes,
     result,
   };
 }
@@ -218,4 +302,38 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
 async function readManifest(fs: SafeFs): Promise<Manifest | null> {
   const data = await fs.readOutput(MANIFEST_FILE);
   return data ? parseManifest(data.toString("utf8")) : null;
+}
+
+/**
+ * What is degraded on this machine for the videos in the plan. The plan itself does not
+ * change with the machine, so this is where "AV1 will be skipped" gets said (§4).
+ */
+export function videoNotes(
+  plan: Plan,
+  caps: { libsvtav1: boolean; libaomAv1: boolean; libx264: boolean; libvmaf: boolean } | null,
+  needsFfmpeg?: string,
+): string[] {
+  const videos = plan.videos ?? [];
+  if (videos.length === 0) return [];
+  const notes: string[] = [];
+  if (!caps) {
+    notes.push(
+      `ffmpeg not found: ${videos.length} video file${videos.length === 1 ? "" : "s"} cannot be processed (${needsFfmpeg ?? "install ffmpeg"}). Images are unaffected.`,
+    );
+    return notes;
+  }
+  if (!caps.libsvtav1 && !caps.libaomAv1) {
+    notes.push(
+      "No AV1 encoder (libsvtav1 / libaom-av1): AV1 outputs will be skipped; H.264 and posters are still produced.",
+    );
+  } else if (!caps.libsvtav1) {
+    notes.push("libsvtav1 not found: AV1 will be encoded with libaom-av1, which is much slower.");
+  }
+  if (!caps.libx264) {
+    notes.push("libx264 not found: H.264 fallback outputs will be skipped.");
+  }
+  if (!caps.libvmaf) {
+    notes.push("libvmaf not available: using the preset's fixed quality (no VMAF search).");
+  }
+  return notes;
 }

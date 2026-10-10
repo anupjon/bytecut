@@ -1,4 +1,4 @@
-import { checkCache, type CacheMissReason } from "../../manifest/cache.js";
+import { checkCache, checkVideoCache, type CacheMissReason } from "../../manifest/cache.js";
 import type { AuditRule, Finding, ProjectContext } from "../types.js";
 
 const ID = "project/stale-output";
@@ -44,6 +44,35 @@ export const staleOutput: AuditRule<ProjectContext> = {
       for (const out of entry?.outputs ?? []) {
         const current = ctx.encoders[out.format];
         if (out.status === "written" && out.encoder !== current) {
+          findings.push({
+            ruleId: ID,
+            severity: "warn",
+            source: item.source,
+            path: out.path,
+            message: `encoded with ${out.encoder}, installed is ${current}; run with --force to regenerate`,
+          });
+        }
+      }
+    }
+
+    // Videos: same states, plus encoder drift per codec.
+    for (const item of ctx.plan.videos ?? []) {
+      if (item.skip) continue;
+      const entry = ctx.manifest.videos[item.source];
+      const state = await checkVideoCache(item, entry, ctx.outputHash, ctx.unavailableCodecs);
+      if (state.kind === "miss" && state.reason !== "new") {
+        findings.push({
+          ruleId: ID,
+          severity: "warn",
+          source: item.source,
+          message: REASONS[state.reason],
+        });
+        continue;
+      }
+      for (const out of entry?.outputs ?? []) {
+        if (out.status !== "written" || out.role !== "video" || !out.codec) continue;
+        const current = ctx.videoEncoders?.[out.codec];
+        if (current && out.encoder !== current) {
           findings.push({
             ruleId: ID,
             severity: "warn",

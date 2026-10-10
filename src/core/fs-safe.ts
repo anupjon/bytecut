@@ -151,6 +151,48 @@ export class SafeFs {
     }
   }
 
+  /**
+   * A path inside `outDir` for a child process (ffmpeg) to write to. The process writes it
+   * itself, so the write boundary is enforced here: the location is validated, never
+   * pre-existing, and only `commitTemp` can turn it into a real output (§6.4).
+   */
+  async reserveTemp(relativePosixPath: string): Promise<string> {
+    const { target, dir } = this.locate(relativePosixPath);
+    await this.assertInside(await realpathOfExisting(dir), relativePosixPath);
+    await mkdir(dir, { recursive: true });
+    await this.assertInside(await realpath(dir), relativePosixPath);
+    return join(dir, `.${basename(target)}.${randomBytes(6).toString("hex")}.tmp`);
+  }
+
+  /** Atomically publishes a file made through `reserveTemp` as `relativePosixPath`. */
+  async commitTemp(tempPath: string, relativePosixPath: string): Promise<void> {
+    const { target, dir } = this.locate(relativePosixPath);
+    if (dirname(tempPath) !== dir || !basename(tempPath).endsWith(".tmp")) {
+      throw new BytecutError("UNSAFE_PATH", `Not a reserved temp file for ${relativePosixPath}`);
+    }
+    try {
+      if ((await lstat(target)).isSymbolicLink()) {
+        throw new BytecutError("UNSAFE_PATH", `Refusing to write through symlink: ${target}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await rename(tempPath, target);
+  }
+
+  /** Removes a reserved temp file (after a failure or cancel). Never throws. */
+  async discardTemp(tempPath: string): Promise<void> {
+    if (!isInside(this.outDir, tempPath) || !basename(tempPath).endsWith(".tmp")) return;
+    await unlink(tempPath).catch(() => undefined);
+  }
+
+  /** Absolute path of an existing output, for reading it with a streaming API. */
+  async outputPath(relativePosixPath: string): Promise<string> {
+    const { target, dir } = this.locate(relativePosixPath);
+    await this.assertInside(await realpathOfExisting(dir), relativePosixPath);
+    return target;
+  }
+
   private async assertInside(resolved: string, requested: string): Promise<void> {
     if (!isInside(this.outDir, resolved)) {
       throw new BytecutError("UNSAFE_PATH", `Output path escapes the output folder: ${requested}`);

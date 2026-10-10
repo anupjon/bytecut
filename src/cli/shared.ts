@@ -2,7 +2,9 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { installHint, resolveBinary } from "../core/ffmpeg/index.js";
 import { detectProject, type ProjectInfo } from "../core/scan/detect.js";
-import { isFile, readOsReleaseId } from "./system.js";
+import { createFfmpegVideoEngine } from "../core/video/ffmpeg-engine.js";
+import type { VideoEngine } from "../core/video/types.js";
+import { isFile, readOsReleaseId, run } from "./system.js";
 
 export interface Discovery {
   projectRoot: string;
@@ -33,4 +35,26 @@ export function ffmpegStatus(): { found: boolean; installHint: string } {
 
 export function noAssetsMessage(command: string, project: ProjectInfo): string {
   return `bytecut${command ? ` ${command}` : ""}: no asset folder found (looked for ${project.include.join(", ")}). Pass files or folders.`;
+}
+
+/**
+ * The ffmpeg-backed engine, resolved flag → env → PATH (§4). It is always returned: a missing
+ * ffmpeg is reported by `capabilities()` returning null, so callers handle one code path.
+ */
+export function createVideoEngine(
+  flags: { ffmpeg?: string | undefined; ffprobe?: string | undefined } = {},
+): VideoEngine {
+  return createFfmpegVideoEngine({
+    ffmpegFlag: flags.ffmpeg,
+    ffprobeFlag: flags.ffprobe,
+    env: process.env,
+    platform: process.platform,
+    deps: { isFile },
+    run,
+  });
+}
+
+/** "install ffmpeg with: …" text for the OS we are on. */
+export function ffmpegInstallText(): string {
+  return `install ffmpeg with: ${installHint(process.platform, readOsReleaseId())}`;
 }

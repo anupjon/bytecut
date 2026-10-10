@@ -4,7 +4,13 @@ import { sharpImageEngine } from "../../core/engines/image.js";
 import { svgoEngine } from "../../core/engines/svg.js";
 import { guarded } from "../errors.js";
 import { formatAuditReport } from "../format.js";
-import { discover, ffmpegStatus, noAssetsMessage } from "../shared.js";
+import {
+  createVideoEngine,
+  discover,
+  ffmpegInstallText,
+  ffmpegStatus,
+  noAssetsMessage,
+} from "../shared.js";
 
 export default defineCommand({
   meta: {
@@ -18,6 +24,11 @@ export default defineCommand({
       type: "string",
       description: "Output folder (default: from the detected framework)",
     },
+    ffmpeg: {
+      type: "string",
+      description: "Path to the ffmpeg binary (else BYTECUT_FFMPEG, then PATH)",
+    },
+    ffprobe: { type: "string", description: "Path to the ffprobe binary" },
     cache: {
       type: "boolean",
       default: true,
@@ -41,6 +52,8 @@ export default defineCommand({
       outDir: found.outDir,
       staticRoot: found.project.staticRoot,
       ffmpeg: ffmpegStatus(),
+      videoEngine: createVideoEngine({ ffmpeg: args.ffmpeg, ffprobe: args.ffprobe }),
+      needsFfmpeg: ffmpegInstallText(),
       persistCache: args.cache !== false,
     });
 

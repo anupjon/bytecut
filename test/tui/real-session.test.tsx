@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { makeImageFixtures } from "../../scripts/make-fixtures.js";
+import { hasFfmpeg, makeImageFixtures, makeVideoFixtures } from "../../scripts/make-fixtures.js";
 import { sharpImageEngine } from "../../src/core/engines/image.js";
 import { svgoEngine } from "../../src/core/engines/svg.js";
 import type { EncodeRequest, ImageEngine } from "../../src/core/engines/types.js";
@@ -10,6 +10,8 @@ import { sha256 } from "../../src/core/hash.js";
 import { parseManifest } from "../../src/core/manifest/io.js";
 import { optimize } from "../../src/core/commands/optimize.js";
 import { createSession } from "../../src/tui/session.js";
+import { createFfmpegVideoEngine } from "../../src/core/video/ffmpeg-engine.js";
+import { isFile, run as runBinary } from "../../src/cli/system.js";
 import { hashAll, listFiles, tempDir } from "../helpers.js";
 import { KEY, mount, project } from "./harness.js";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -207,3 +209,97 @@ describe("TUI against the real session", () => {
 // The harness mounts <App> itself; this alias keeps the call sites above short.
 import { App } from "../../src/tui/app.js";
 const App3 = App;
+
+const FFMPEG = await hasFfmpeg();
+if (!FFMPEG) console.warn("[bytecut tests] ffmpeg not found: skipping TUI video tests.");
+
+describe.skipIf(!FFMPEG)("TUI with a real video", () => {
+  it("lists a video, plans it, and writes AV1 + H.264 + poster", async () => {
+    const videos = await mkdtemp(join(tmpdir(), "bytecut-tui-video-"));
+    await makeVideoFixtures(videos);
+    const root = await tempDir();
+    await writeFile(join(root, "package.json"), JSON.stringify({ dependencies: { next: "15" } }));
+    await mkdir(join(root, "public/media"), { recursive: true });
+    await cp(join(videos, "heavy.mp4"), join(root, "public/media/heavy.mp4"));
+    await rm(videos, { recursive: true, force: true });
+
+    const videoEngine = createFfmpegVideoEngine({
+      env: process.env,
+      platform: process.platform,
+      deps: { isFile },
+      run: runBinary,
+    });
+    const session = createSession({
+      projectRoot: root,
+      engine: sharpImageEngine,
+      svgEngine: svgoEngine,
+      project,
+      inputs: ["public"],
+      toolVersion: "test",
+      ffmpeg: { found: true, installHint: "" },
+      videoEngine,
+      needsFfmpeg: "install ffmpeg",
+    });
+
+    current = mount(session, (props) => <App3 {...props} />);
+    await current.waitFor((f) => f.includes("heavy.mp4"), "the video row", 60_000);
+    expect(current.frame()).toMatch(/\[x\] .*heavy\.mp4/);
+    expect(current.frame()).toContain("content-video");
+
+    await current.press(KEY.enter);
+    await current.waitFor((f) => f.includes("Review:"), "the review", 30_000);
+    expect(current.frame()).toMatch(/heavy\.mp4.*content-video · 3 outputs/);
+
+    await current.press(KEY.enter);
+    await current.waitFor((f) => f.includes("Done"), "the results", 120_000);
+    // The results screen is one line per file plus totals; the outputs are checked on disk.
+    expect(current.frame()).toMatch(/heavy\.mp4.*content-video/);
+    expect(current.frame()).toMatch(/Total: 3 files written/);
+
+    const out = await listFiles(join(root, "public/_bytecut"));
+    expect(out).toEqual(
+      expect.arrayContaining([
+        "media/heavy/heavy-320.av1.mp4",
+        "media/heavy/heavy-320.h264.mp4",
+        "media/heavy/heavy-poster.avif",
+        "bytecut-manifest.json",
+      ]),
+    );
+  }, 240_000);
+
+  it("shows a video as skipped with the install command when ffmpeg is missing", async () => {
+    const videos = await mkdtemp(join(tmpdir(), "bytecut-tui-video-"));
+    await makeVideoFixtures(videos);
+    const root = await tempDir();
+    await writeFile(join(root, "package.json"), JSON.stringify({ dependencies: { next: "15" } }));
+    await mkdir(join(root, "public/media"), { recursive: true });
+    await cp(join(videos, "heavy.mp4"), join(root, "public/media/heavy.mp4"));
+    await cp(join(templateDir, "photo.jpg"), join(root, "public/media/photo.jpg"));
+    await rm(videos, { recursive: true, force: true });
+
+    const session = createSession({
+      projectRoot: root,
+      engine: sharpImageEngine,
+      svgEngine: svgoEngine,
+      project,
+      inputs: ["public"],
+      toolVersion: "test",
+      ffmpeg: { found: false, installHint: "apt install ffmpeg" },
+      videoEngine: createFfmpegVideoEngine({
+        ffmpegFlag: "/nonexistent/ffmpeg",
+        env: process.env,
+        platform: process.platform,
+        deps: { isFile },
+        run: runBinary,
+      }),
+      needsFfmpeg: "install ffmpeg with: apt install ffmpeg",
+    });
+
+    current = mount(session, (props) => <App3 {...props} />);
+    await current.waitFor((f) => f.includes("photo.jpg"), "the list", 60_000);
+    // The image is offered; the video is shown as skipped with what to install.
+    expect(current.frame()).toContain("skipped public/media/heavy.mp4: needs ffmpeg");
+    expect(current.frame()).toContain("install ffmpeg with: apt install ffmpeg");
+    expect(current.frame()).not.toMatch(/\[.\] .*heavy\.mp4/);
+  }, 120_000);
+});

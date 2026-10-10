@@ -64,9 +64,10 @@ const result = (outputs: OutputResult[], status: ItemResult["status"] = "done"):
 });
 
 const previous: Manifest = {
-  version: 2,
+  version: 3,
   tools: {},
   publicPath: "/_bytecut",
+  videos: {},
   sources: {
     "a.jpg": {
       sha256: S1,

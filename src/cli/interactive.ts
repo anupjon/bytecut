@@ -4,7 +4,13 @@ import { collectDoctorReport, formatDoctorReport } from "../core/doctor/report.j
 import { sharpImageEngine } from "../core/engines/image.js";
 import { svgoEngine } from "../core/engines/svg.js";
 import { formatAuditReport } from "./format.js";
-import { discover, ffmpegStatus, noAssetsMessage } from "./shared.js";
+import {
+  createVideoEngine,
+  discover,
+  ffmpegInstallText,
+  ffmpegStatus,
+  noAssetsMessage,
+} from "./shared.js";
 import { doctorDeps } from "./system.js";
 
 /** TTY on both ends and not CI: only then is an interactive UI appropriate. */
@@ -42,6 +48,8 @@ export async function runDefault(): Promise<void> {
       svgEngine: svgoEngine,
       toolVersion: pkg.version,
       ffmpeg: ffmpegStatus(),
+      videoEngine: createVideoEngine(),
+      needsFfmpeg: ffmpegInstallText(),
       loadDoctor: async () => formatDoctorReport(await collectDoctorReport(doctorDeps())),
     });
     return;
@@ -55,6 +63,8 @@ export async function runDefault(): Promise<void> {
     outDir: found.outDir,
     staticRoot: found.project.staticRoot,
     ffmpeg: ffmpegStatus(),
+    videoEngine: createVideoEngine(),
+    needsFfmpeg: ffmpegInstallText(),
     // A bare `npx bytecut` in CI should not create folders in the repo.
     persistCache: false,
   });
