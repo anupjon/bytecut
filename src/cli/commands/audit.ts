@@ -1,14 +1,10 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { audit } from "../../core/commands/audit.js";
 import { sharpImageEngine } from "../../core/engines/image.js";
 import { svgoEngine } from "../../core/engines/svg.js";
-import { installHint, resolveBinary } from "../../core/ffmpeg/index.js";
-import { detectProject } from "../../core/scan/detect.js";
 import { guarded } from "../errors.js";
 import { formatAuditReport } from "../format.js";
-import { isFile, readOsReleaseId } from "../system.js";
+import { discover, ffmpegStatus, noAssetsMessage } from "../shared.js";
 
 export default defineCommand({
   meta: {
@@ -30,42 +26,28 @@ export default defineCommand({
     },
   },
   run: guarded(async ({ args }) => {
-    const projectRoot = process.cwd();
-    const project = await detectProject(projectRoot);
-    const inputs = args._.map(String);
-    const scanInputs =
-      inputs.length > 0
-        ? inputs
-        : project.include.filter((p) => existsSync(resolve(projectRoot, p)));
-    if (scanInputs.length === 0) {
-      console.error(
-        `bytecut audit: no asset folder found (looked for ${project.include.join(", ")}). Pass files or folders.`,
-      );
+    const found = await discover(args._.map(String), args["out-dir"]);
+    if (found.scanInputs.length === 0) {
+      console.error(noAssetsMessage("audit", found.project));
       process.exitCode = 2;
       return;
     }
 
-    const ffmpeg = resolveBinary(
-      "ffmpeg",
-      { env: process.env, platform: process.platform },
-      { isFile },
-    );
     const report = await audit({
-      projectRoot,
+      projectRoot: found.projectRoot,
       engine: sharpImageEngine,
       svgEngine: svgoEngine,
-      inputs: scanInputs,
-      outDir: args["out-dir"] ?? project.outDir,
-      staticRoot: project.staticRoot,
-      ffmpeg: {
-        found: ffmpeg.found,
-        installHint: installHint(process.platform, readOsReleaseId()),
-      },
+      inputs: found.scanInputs,
+      outDir: found.outDir,
+      staticRoot: found.project.staticRoot,
+      ffmpeg: ffmpegStatus(),
       persistCache: args.cache !== false,
     });
 
     if (args.json) {
-      process.stdout.write(`${JSON.stringify({ version: 1, project, ...report }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ version: 1, project: found.project, ...report }, null, 2)}\n`,
+      );
       return;
     }
     console.log(formatAuditReport(report, { all: Boolean(args.all) }));

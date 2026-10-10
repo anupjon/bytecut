@@ -1,28 +1,11 @@
+import { formatBytes, percentChange, plural } from "../core/units.js";
 import type { Finding } from "../core/audit/types.js";
 import type { AuditReport } from "../core/commands/audit.js";
 import type { CacheState } from "../core/manifest/cache.js";
 import type { ItemResult, OutputResult, RunResult } from "../core/execute/run.js";
 import type { Plan } from "../core/plan/types.js";
 
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toFixed(value < 10 ? 2 : 1)} ${units[unit]}`;
-}
-
-function percentChange(before: number, after: number): string {
-  if (before === 0) return "n/a";
-  const change = Math.round(((after - before) / before) * 100);
-  return `${change > 0 ? "+" : ""}${change}%`;
-}
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+export { formatBytes };
 
 export function formatPlan(plan: Plan, cache?: Map<string, CacheState>): string {
   const lines: string[] = [];

@@ -7,7 +7,7 @@ export const noModernFormat: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { minSavingsBytes } = ruleOptions(ctx, ID, { minSavingsBytes: 1024 });

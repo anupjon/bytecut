@@ -44,10 +44,37 @@ export interface AuditOptions {
   persistCache?: boolean;
   /** Scan project text files for references (default true). */
   scanReferences?: boolean;
+  /** Per-file preset by source path; wins over the classifier (the TUI's per-file choice). */
+  presetOverrides?: Record<string, string>;
+  /** Coarse progress for a UI; `total` is the number of raster files. */
+  onProgress?(event: { phase: AuditPhase; done: number; total: number }): void;
 }
+
+/** One scanned raster file, as the TUI lists it. */
+export interface FileSummary {
+  source: string;
+  bytes: number;
+  width: number;
+  height: number;
+  format: string;
+  /** Preset the classifier chose; "-" for files that can't be processed. */
+  preset: string;
+  reason: string;
+  /** Up-to-date outputs already exist. */
+  covered: boolean;
+  estimatedBytes: number | null;
+  savingsBytes: number | null;
+  plannedOutputs: number;
+  /** Why the file can't be processed (animated, corrupt, ...). */
+  skipped?: string;
+}
+
+export type AuditPhase = "scan" | "analyze" | "estimate" | "references";
 
 export interface AuditReport {
   findings: Finding[];
+  /** Every raster file scanned, sorted by path. */
+  files: FileSummary[];
   counts: { images: number; svgs: number; videos: number; skipped: number };
   totals: {
     /** Bytes of every raster source scanned. */
@@ -79,12 +106,17 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     ? parseManifest(manifestData.toString("utf8"))
     : null;
 
+  const total = found.files.length;
+  let analyzed = 0;
+  options.onProgress?.({ phase: "scan", done: 0, total });
   const analyze = async (data: Buffer, digest: string): Promise<ImageAnalysis> => {
-    const cached = cache.getAnalysis(digest);
-    if (cached) return cached;
-    const fresh = await engine.analyze(data);
-    cache.setAnalysis(digest, fresh);
-    return fresh;
+    let result = cache.getAnalysis(digest);
+    if (!result) {
+      result = await engine.analyze(data);
+      cache.setAnalysis(digest, result);
+    }
+    options.onProgress?.({ phase: "analyze", done: ++analyzed, total });
+    return result;
   };
 
   const plan = await buildPlan({
@@ -93,6 +125,10 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     outDir,
     staticRoot: options.staticRoot,
     choosePreset: (source, analysis) => {
+      const forced = options.presetOverrides?.[source];
+      if (forced) {
+        return { preset: getImagePreset(forced), reason: `set to ${forced} for this file` };
+      }
       const verdict = classify(source, analysis);
       return {
         preset: getImagePreset(verdict.preset),
@@ -113,7 +149,9 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
 
   const images: ImageFacts[] = [];
   const skipped: AuditContext["skipped"] = [];
+  let estimated = 0;
   for (const item of plan.items) {
+    options.onProgress?.({ phase: "estimate", done: estimated++, total });
     if (item.skip) {
       skipped.push({
         source: item.source,
@@ -215,8 +253,41 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
     (sum, image) => sum + (image.cache.kind === "hit" ? 0 : (savingOf(image) ?? 0)),
     0,
   );
+  const files: FileSummary[] = [
+    ...images.map((image): FileSummary => ({
+      source: image.source,
+      bytes: image.bytes,
+      width: image.analysis.width,
+      height: image.analysis.height,
+      format: image.analysis.format,
+      preset: image.item.preset,
+      reason: image.classification.reason,
+      covered: image.cache.kind === "hit",
+      estimatedBytes: image.estimate?.best.bytes ?? null,
+      savingsBytes: savingOf(image) ?? null,
+      plannedOutputs: image.item.outputs.length,
+    })),
+    ...plan.items
+      .filter((i) => i.skip)
+      .map((i): FileSummary => ({
+        source: i.source,
+        bytes: i.sourceBytes,
+        width: i.sourceWidth,
+        height: i.sourceHeight,
+        format: "-",
+        preset: "-",
+        reason: "",
+        covered: false,
+        estimatedBytes: null,
+        savingsBytes: null,
+        plannedOutputs: 0,
+        skipped: i.skip!.reason,
+      })),
+  ].sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : 0));
+
   return {
     findings: sortFindings(findings),
+    files,
     counts: {
       images: images.length,
       svgs: svgs.length,

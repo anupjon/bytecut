@@ -19,7 +19,7 @@ export const staleOutput: AuditRule<ProjectContext> = {
   id: ID,
   category: "project",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const findings: Finding[] = [];

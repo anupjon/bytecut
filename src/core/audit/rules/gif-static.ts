@@ -7,7 +7,7 @@ export const gifStatic: AuditRule = {
   id: ID,
   category: "gif",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const findings: Finding[] = [];

@@ -8,7 +8,7 @@ export const reencodeSavings: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "info",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { minPercent, minBytes } = ruleOptions(ctx, ID, { minPercent: 25, minBytes: 10 * 1024 });

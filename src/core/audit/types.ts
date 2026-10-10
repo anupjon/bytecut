@@ -80,15 +80,18 @@ export interface AuditContext extends ProjectContext {
 }
 
 /**
- * One file per rule (§5). `fix` is null where `optimize` can't yet apply the fix; the engine
- * that applies fixes arrives with the later milestones.
+ * How a finding can be fixed: `optimize` means running the optimize pipeline on the file
+ * resolves it (the TUI offers these for selection); `null` means report-only for now.
  */
+export type FixKind = "optimize" | null;
+
+/** One file per rule (§5). */
 export interface AuditRule<C extends ProjectContext = AuditContext> {
   id: string;
   category: "image" | "svg" | "gif" | "project";
   defaultSeverity: Exclude<Severity, "off">;
   check(ctx: C): Promise<Finding[]>;
-  fix: null;
+  fix: FixKind;
 }
 
 /** ESLint-style: a severity, or `[severity, options]`. */

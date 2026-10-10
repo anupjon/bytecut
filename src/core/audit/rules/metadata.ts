@@ -7,7 +7,7 @@ export const metadata: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "info",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { minBytes } = ruleOptions(ctx, ID, { minBytes: 1024 });

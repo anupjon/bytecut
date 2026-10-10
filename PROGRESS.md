@@ -8,7 +8,8 @@
 | M1 Image engine + headless optimize | Complete locally; CI not yet run |
 | M2 Plan, manifest, cache            | Complete locally; CI not yet run |
 | M3 Scanner, classifier, audit       | Complete locally; CI not yet run |
-| M4 – M9                             | Not started                      |
+| M4 TUI                              | Complete locally; CI not yet run |
+| M5 – M9                             | Not started                      |
 
 ## M0 — what changed
 
@@ -118,62 +119,80 @@
   source with the sum of every width and format, which read as a poor result.
 - New dependencies: `ignore` (confirmed with you), `svgo` (on the §2 list).
 
+## M4 — what changed
+
+- **`bytecut` (no args)** opens an Ink UI when stdin and stdout are TTYs and `CI` is unset; otherwise it
+  prints the audit report plus a hint, exit 0, writing nothing (not even the cache). Subcommands stay
+  headless. The TUI is loaded lazily so `doctor`/`audit` don't pay for React.
+- **Layout** (`src/tui/`, core never imports Ink): `state.ts` (pure reducer), `model.ts` (audit report →
+  rows), `commands.ts` (command bar parser, `@` fuzzy matcher), `session.ts` (every core call the UI
+  makes, injectable), `components/`, `app.tsx`.
+- **List**: one row per optimizable file with checkbox, `size → ~estimate`, preset and rule badges,
+  windowed to the terminal height. §4 defaults: warn+ selected, info not. Findings `optimize` cannot fix
+  (SVG, duplicates, animated GIFs, unreferenced, over-budget, orphaned) sit in a separate report-only
+  section. Files whose outputs are up to date drop out and are counted.
+- **Keys**: `↑↓`/`jk`, `space`, `a`, `enter` (review, then run), `p` (cycle preset, `*` marks an override),
+  `o` (output folder, validated with the same §6.5 checks as `optimize`), `d` (details), `?`, `esc`
+  (back / cancel), `q`, `ctrl+c` (cancels a run first, quits only when idle).
+- **Command bar**: `/audit /optimize [@files] /preset <name> [@files] /out <dir> /select all|none|warn
+/doctor /help /quit`; `@` completes files by fuzzy match; a bare `@name` jumps the cursor. Pasted
+  commands are handled as typing.
+- **Review/run/cancel**: review shows the plan before anything is written; a live progress bar with
+  per-output lines; Esc aborts, finishes the in-flight encode and leaves no partial files (atomic
+  writes), and the results screen uses the same totals as the headless summary.
+- **Core changes**: `audit()` returns per-file summaries and reports scan progress; `optimize()` accepts
+  per-file preset overrides; the executor emits `onItemStart`/`onOutputDone`; rules carry a real `fix`
+  marker (`"optimize"` or `null`) instead of an always-null placeholder.
+- New dependencies (confirmed with you): `ink@8`, `react@19.3`, dev `@types/react`, `ink-testing-library`.
+
 ## Verification (2026-10-10, Linux, Node 23.8)
 
-- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm test`: 316/316 pass (~77 s; M2 was ~22 s).
-- **Golden**: audit hits on the fixture project (29 hits across 13 rules) and the dry-run plan.
-- **Estimator accuracy**: worst error 16.9% over 12 extrapolated outputs (28 outputs total), against
-  the ±25% target. Three of those images were not used to choose the exponent.
-- **Performance** (200 tiny files): warm audit 46 ms vs the 10 s target; cold 10.7 s.
-- Mutation-checked: disabling the covered-image check, gitignore negation, the size exponent, or GPS
-  detection each fails the intended tests.
-- Manual runs of the built CLI: cold/warm audit, `--no-cache`, `--json`, optimize then audit.
+- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm test`: 418/418 pass in 34 files (~100 s; M3 was ~77 s).
+- **Driven under a real pseudo-terminal** (python `pty`, 30x100): scan, select, details, preset, review,
+  run, cancel, command bar with `/` and `@`, `/out ..` refusal, `/help`. Each found real bugs (below).
+- **Cancel verified on disk**: after Esc mid-run there were no temp files, every manifest entry matched
+  its file hash, and a follow-up run wrote exactly the remaining files with no warnings.
+- Component tests (ink-testing-library) cover list selection, review, run progress, cancel, command
+  bar and the output-folder prompt; a real-session test cancels a live run against a temp project.
+
+### Bugs found by the walkthrough, not by unit tests
+
+- Preset overrides were forgotten by the rescan, so an optimized file reappeared as work to do.
+- A row slightly wider than the terminal wrapped and corrupted the layout (now explicit widths).
+- Pasted input arrived as one chunk and was silently ignored.
+- The `@` matcher ranked `gps-map.png` above `gps.jpg` (greedy match latched onto the `g` in `img/`).
+- The done screen leaked a per-output line into the totals.
+- A stale status message survived closing the command bar.
+- **Regression caught by the full suite**: citty runs the root command's `run` after every subcommand, so
+  `optimize`, `audit` and `doctor` were each followed by a bare-`bytecut` audit (polluting `--json`,
+  writing cache files, even scanning freshly written outputs as sources). The root `run` now bails out
+  when a subcommand was given, with a regression test.
 
 ## Decisions
 
-See "Decisions log" in AGENTS.md. M3 additions: layout relative to the static root + manifest v2; `ignore`
-dependency; cache inside outDir; estimator exponent 1.6; source-level rules skip covered images.
+See "Decisions log" in AGENTS.md. M4 additions: one row per file; report-only section; headless
+fallback prints the audit; `fix` marker on rules; overrides are session-only.
 
 ## Known issues
 
-- **The estimator's exponent is a prior, not a law.** It was chosen on three synthetic images; implied
-  exponents ranged 1.46–1.82 and a per-image fit was _worse_. The ±25% result holds on my fixtures; real
-  photographs are unverified. Estimates are labelled `~` in the report.
-- **All classifier thresholds are first guesses** (64 colours, 1024px icon cap, 1920px + 1.6 aspect for
-  hero, name tokens) validated only on synthetic fixtures. Wrong verdicts degrade gracefully (the
-  fallback is `photo`) but are possible. `hero`/`icon` quality and widths are likewise unmeasured.
-- **SVG output is not implemented, and no milestone covers it.** `optimize` skips SVGs with a note;
-  `svg/*` rules only report an svgo estimate. Needs a decision on where it belongs.
-- **Animated GIFs are only reported** (needs ffmpeg, M5). No savings number is given, deliberately.
-- **`project/unreferenced` is name-based** and blind to dynamic references; it is `info` for that reason.
-  The scan reads text files ≤1 MiB, 64 MiB total, and says so if truncated.
-- **`audit` writes to outDir** (the cache) unless `--no-cache`: on a never-optimized project this creates
-  `<outDir>/.bytecut-cache/` — the option you chose; flagging it because it is a visible side effect.
-- **Cold audit is slow-ish**: 10.7 s for 200 tiny files (2 trial encodes each); no progress output yet.
-  Large images will cost more per file.
-- **Rule overlap**: an unoptimized large JPEG can legitimately hit no-modern-format, oversized,
-  no-responsive-set, heavy and unreferenced. The summary de-duplicates savings; the per-rule sections
-  do not.
-- **Settings and budgets have no CLI/config surface** until M7; `project/over-budget` is inert from the CLI.
-- **`.gitignore` coverage is partial**: `.git/info/exclude`, the global gitignore and `.gitignore` files
-  in directories above the cwd are not read.
-- **Detection is cwd-only**: no monorepo/workspace handling; Nuxt, SvelteKit, Remix etc. fall back to
-  `static` (which still works when a `public/` folder exists).
-- **Test suite time** tripled (~77 s) from real-encode integration tests; fine locally, worth watching in CI.
-- **Carried over from M2**:
-  - `--json` works only with `--dry-run`; a JSON result for real runs isn't designed.
-  - Encoder drift is reported, not acted on: `--force` is the only way to regenerate, and it re-encodes
-    everything rather than just the drifted outputs.
-  - No `--prune`: orphans are reported and stay listed in the manifest (so they remain deletable under
-    §6.3), but nothing deletes them.
-  - No locking: two concurrent runs on one outDir could overwrite each other's manifest update.
-  - Every run hashes every source and written output to decide the cache.
-  - Golden snapshots use a fake engine and hand-written bytes on purpose: real sharp bytes differ across
-    libjpeg/libvips builds and would break the OS matrix.
-- Still unverified: CI, macOS/Windows, a real SIGINT through the CLI. Still no git repo.
+- **"Manual walkthrough" is not a human walkthrough.** I drove the real binary through a pty and
+  read its frames, which is thorough but is not someone using a terminal emulator. You should do the
+  final pass in a real terminal (resize, colours, a very narrow window, a slow disk).
+- **Preset overrides last for the session only.** The audit after quitting will classify the file
+  again and call it un-optimized. Persisting choices is the M7 "save these choices?" prompt.
+- **Cancel waits for the in-flight encode** (sharp cannot be interrupted): up to a few seconds for a
+  large AVIF. The UI says so while it waits.
+- **No terminal-resize handling beyond Ink's re-render**; very narrow terminals (<60 cols) will truncate
+  paths heavily and were not tested.
+- **The TUI scan is the audit**: cold scans of big projects show a counter, not per-file names, and
+  cost the same as `bytecut audit` (~10 s per 200 small images).
+- **`/doctor` reads once per open** and is not refreshed; `/quit` and `q` while a run is queued are not
+  distinguished from cancel.
+- **Carried over**: SVG output is still unimplemented and unowned by a milestone; animated GIFs are
+  report-only until M5; `--json` is dry-run only; no `--prune`; no locking; `.gitignore` coverage is
+  partial; detection is cwd-only; CI, macOS/Windows and a real SIGINT are unverified.
 
 ## Next
 
-M4 — TUI (Ink). It needs a confirmed plan first (§10). It is the first milestone with a new runtime
-dependency set (`ink`, `react`) and a manual-walkthrough acceptance criterion, so expect questions about
-scope and testing approach.
+M5 — video (ffprobe, AV1 + H.264, posters, degradation paths). New runtime binary dependencies are
+the user's own ffmpeg, so expect questions about fixtures and CI, not packages.

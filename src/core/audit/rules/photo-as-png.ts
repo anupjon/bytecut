@@ -7,7 +7,7 @@ export const photoAsPng: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { minColors } = ruleOptions(ctx, ID, { minColors: 128 });

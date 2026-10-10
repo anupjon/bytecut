@@ -5,7 +5,7 @@ import type { Finding } from "../audit/types.js";
 import { AnalysisCache } from "../cache/store.js";
 import { classify } from "../classify/classify.js";
 import type { ImageAnalysis, ImageEngine } from "../engines/types.js";
-import { runPlan, type ItemResult, type RunResult } from "../execute/run.js";
+import { runPlan, type ItemResult, type OutputResult, type RunResult } from "../execute/run.js";
 import { SafeFs } from "../fs-safe.js";
 import { sha256 } from "../hash.js";
 import { checkCache, type CacheState } from "../manifest/cache.js";
@@ -31,11 +31,15 @@ export interface OptimizeOptions {
   publicPath?: string;
   /** Force one preset for every image instead of classifying. */
   presetOverride?: string;
+  /** Per-file preset by source path (relative, POSIX); wins over `presetOverride` and the classifier. */
+  presetOverrides?: Record<string, string>;
   /** Write outputs. When false only the plan and findings are produced. */
   execute: boolean;
   force?: boolean;
   concurrency?: number;
   signal?: AbortSignal;
+  onItemStart?(source: string): void;
+  onOutputDone?(source: string, output: OutputResult): void;
   onItemDone?(result: ItemResult, done: number, total: number): void;
 }
 
@@ -114,6 +118,10 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
 
   const override = options.presetOverride ? getImagePreset(options.presetOverride) : null;
   const choosePreset = (source: string, analysis: ImageAnalysis): PresetChoice => {
+    const perFile = options.presetOverrides?.[source];
+    if (perFile) {
+      return { preset: getImagePreset(perFile), reason: `set to ${perFile} for this file` };
+    }
     if (override) {
       return { preset: override, reason: `forced with --preset ${override.name}` };
     }
@@ -176,6 +184,8 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     ...(options.force !== undefined ? { force: options.force } : {}),
     ...(options.concurrency !== undefined ? { concurrency: options.concurrency } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.onItemStart ? { onItemStart: options.onItemStart } : {}),
+    ...(options.onOutputDone ? { onOutputDone: options.onOutputDone } : {}),
     ...(options.onItemDone ? { onItemDone: options.onItemDone } : {}),
   });
 

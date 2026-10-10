@@ -22,7 +22,12 @@ describe("rule metadata (§5)", () => {
     [noResponsiveSet, "image/no-responsive-set", "info"],
     [cmykOr16bit, "image/cmyk-or-16bit", "warn"],
   ] as const)("%s", (rule, id, severity) => {
-    expect(rule).toMatchObject({ id, category: "image", defaultSeverity: severity, fix: null });
+    expect(rule).toMatchObject({
+      id,
+      category: "image",
+      defaultSeverity: severity,
+      fix: "optimize",
+    });
   });
 });
 

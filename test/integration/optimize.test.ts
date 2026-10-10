@@ -488,3 +488,70 @@ describe("zero-config CLI: detection and audit (M3)", () => {
     }
   });
 });
+
+describe("plain `bytecut` when it is not an interactive terminal (M4)", () => {
+  const cli = (cwd: string, args: string[], env: Record<string, string> = {}) =>
+    execFileAsync(
+      process.execPath,
+      ["--import", import.meta.resolve("tsx"), join(repoRoot, "src/cli/index.ts"), ...args],
+      { cwd, env: { ...process.env, ...env } },
+    );
+
+  async function nextProject() {
+    const root = await tempDir();
+    await writeFile(join(root, "package.json"), JSON.stringify({ dependencies: { next: "15" } }));
+    await mkdir(join(root, "public/img"), { recursive: true });
+    await cp(join(templateDir, "small.jpg"), join(root, "public/img/small.jpg"));
+    return root;
+  }
+
+  it("prints the audit report and a hint, exits 0, and writes nothing", async () => {
+    const root = await nextProject();
+    const { stdout } = await cli(root, []);
+    expect(stdout).toContain("image/no-modern-format");
+    expect(stdout).toContain("public/img/small.jpg");
+    expect(stdout).toMatch(/Not an interactive terminal\. Run `bytecut optimize -y`/);
+    // Not even the analysis cache: a bare `npx bytecut` in CI must not touch the repo (§6.13).
+    expect(await listFiles(join(root, "public"))).toEqual(["img/small.jpg"]);
+  });
+
+  it("does the same under CI=true", async () => {
+    const root = await nextProject();
+    const { stdout } = await cli(root, [], { CI: "true" });
+    expect(stdout).toContain("image/no-modern-format");
+    expect(await listFiles(join(root, "public"))).toEqual(["img/small.jpg"]);
+  });
+
+  it("fails clearly when there is nothing to scan", async () => {
+    const root = await tempDir();
+    await writeFile(join(root, "package.json"), JSON.stringify({ dependencies: { vite: "6" } }));
+    const error = await cli(root, []).then(
+      () => {
+        throw new Error("expected failure");
+      },
+      (e: { code: number; stderr: string }) => e,
+    );
+    expect(error.code).toBe(2);
+    expect(error.stderr).toMatch(/no asset folder found/);
+  });
+
+  it("a subcommand is not followed by the default action (citty runs the parent's run too)", async () => {
+    const root = await nextProject();
+    const doctor = await cli(root, ["doctor", "--json"]);
+    // Pure JSON: no audit report appended, and nothing written into the project.
+    expect(() => JSON.parse(doctor.stdout)).not.toThrow();
+    expect(await listFiles(join(root, "public"))).toEqual(["img/small.jpg"]);
+
+    const dry = await cli(root, ["optimize", "public/img/small.jpg", "--dry-run", "--json"]);
+    expect(() => JSON.parse(dry.stdout)).not.toThrow();
+    expect(dry.stdout).not.toContain("Not an interactive terminal");
+  });
+
+  it("--help and subcommands are unaffected", async () => {
+    const root = await nextProject();
+    const help = await cli(root, ["--help"]);
+    expect(help.stdout).toMatch(/audit\|optimize\|doctor/);
+    const audit = await cli(root, ["audit", "--no-cache"]);
+    expect(audit.stdout).toContain("image/no-modern-format");
+  });
+});

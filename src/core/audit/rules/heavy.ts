@@ -7,7 +7,7 @@ export const heavy: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { maxBytes } = ruleOptions(ctx, ID, { maxBytes: 500 * 1000 });

@@ -11,7 +11,7 @@ export const noResponsiveSet: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "info",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { minWidth } = ruleOptions(ctx, ID, { minWidth: 1000 });

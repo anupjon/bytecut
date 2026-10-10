@@ -63,6 +63,9 @@ export interface RunOptions {
   force?: boolean;
   concurrency?: number;
   signal?: AbortSignal;
+  onItemStart?(source: string): void;
+  /** Fires as each output of an item is resolved, so a UI can show live progress. */
+  onOutputDone?(source: string, output: OutputResult): void;
   onItemDone?(result: ItemResult, done: number, total: number): void;
 }
 
@@ -138,6 +141,10 @@ async function runItem(
   }
 
   const outputs: OutputResult[] = [];
+  const record = (output: OutputResult) => {
+    outputs.push(output);
+    options.onOutputDone?.(item.source, output);
+  };
   let failed = false;
   for (const planned of item.outputs) {
     const shared = {
@@ -148,7 +155,7 @@ async function runItem(
       effort: planned.effort,
     };
     if (options.signal?.aborted) {
-      outputs.push({ ...shared, width: planned.width, height: 0, bytes: 0, status: "cancelled" });
+      record({ ...shared, width: planned.width, height: 0, bytes: 0, status: "cancelled" });
       continue;
     }
     try {
@@ -163,7 +170,7 @@ async function runItem(
 
       // §6.7: never emit a file larger than what we started with.
       if (encoded.data.byteLength >= item.sourceBytes) {
-        outputs.push({ ...result, status: "already-optimal" });
+        record({ ...result, status: "already-optimal" });
         continue;
       }
 
@@ -172,7 +179,7 @@ async function runItem(
       if (onDisk) {
         const diskHash = sha256(onDisk);
         if (diskHash === newHash) {
-          outputs.push({ ...result, sha256: newHash, status: "unchanged" });
+          record({ ...result, sha256: newHash, status: "unchanged" });
           continue;
         }
         // §6.6: only replace files the manifest says are ours and unmodified.
@@ -180,16 +187,16 @@ async function runItem(
           warnings.push(
             `${planned.path}: a file is already there that bytecut did not write or that was edited; left alone (use --force to overwrite)`,
           );
-          outputs.push({ ...result, status: "protected" });
+          record({ ...result, status: "protected" });
           continue;
         }
       }
 
       await options.fs.writeOutput(planned.path, encoded.data);
-      outputs.push({ ...result, sha256: newHash, status: "written" });
+      record({ ...result, sha256: newHash, status: "written" });
     } catch (error) {
       failed = true;
-      outputs.push({
+      record({
         ...shared,
         width: planned.width,
         height: 0,
@@ -224,9 +231,13 @@ export async function runPlan(plan: Plan, options: RunOptions): Promise<RunResul
       const index = next++;
       const item = plan.items[index];
       if (!item) return;
-      const result: ItemResult = options.signal?.aborted
-        ? { ...header(item), status: "cancelled", outputs: [] }
-        : await runItem(item, options, owned, warnings);
+      let result: ItemResult;
+      if (options.signal?.aborted) {
+        result = { ...header(item), status: "cancelled", outputs: [] };
+      } else {
+        options.onItemStart?.(item.source);
+        result = await runItem(item, options, owned, warnings);
+      }
       results[index] = result;
       options.onItemDone?.(result, ++done, plan.items.length);
     }

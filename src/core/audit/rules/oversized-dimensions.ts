@@ -7,7 +7,7 @@ export const oversizedDimensions: AuditRule = {
   id: ID,
   category: "image",
   defaultSeverity: "warn",
-  fix: null,
+  fix: "optimize",
 
   async check(ctx) {
     const { maxDimension } = ruleOptions(ctx, ID, { maxDimension: 2560 });

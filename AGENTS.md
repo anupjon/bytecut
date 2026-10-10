@@ -401,4 +401,10 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — The classifier falls back to `photo` when ambiguous, and `icon` is capped at 1024px so wide flat art isn't limited to icon widths — conservative per §6.8.
 - 2026-10-10 — `optimize`'s headline compares source to the widest output per image (same measure as `audit`), not to the sum of all generated widths and formats.
 - 2026-10-10 — `image/no-responsive-set`, `image/no-modern-format` and others may all fire on one unoptimized file; per-rule sections keep their own numbers and the summary counts each file's best saving once.
+- 2026-10-10 — The TUI lists one row per optimizable file; findings `optimize` cannot fix (SVG, duplicates, animated GIFs, unreferenced, over-budget, orphaned) are shown in a separate report-only section so they are never silently dropped (§4).
+- 2026-10-10 — Plain `bytecut` without a TTY (or with CI set) prints the audit report and a hint and writes nothing, not even the analysis cache — a bare `npx bytecut` in CI must not touch the repo (§6.13).
+- 2026-10-10 — Rules carry `fix: "optimize" | null`; the TUI only offers selection for findings whose fix is `optimize`, so adding a fixer to a rule is what makes it actionable.
+- 2026-10-10 — Per-file preset overrides are TUI session state, passed to both the audit and the optimizer so an optimized file does not reappear as work to do; persisting them is the M7 save prompt.
+- 2026-10-10 — Esc during a run aborts and finishes the in-flight encode (sharp cannot be interrupted); atomic writes mean no partial file is left, and the manifest records only what was fully written.
+- 2026-10-10 — Added `react` (Ink's required peer), `@types/react` and `ink-testing-library` (dev) for M4, with your approval; `ink` was already on the §2 list.
 
