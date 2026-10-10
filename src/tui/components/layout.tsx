@@ -27,7 +27,7 @@ const HINTS: Record<string, string> = {
   list: "↑↓ move · space select · p preset · d details · o out dir · enter review · / cmds · ? help",
   review: "enter run · esc back",
   running: "esc cancel",
-  done: "enter/esc back to list · q quit",
+  done: "↑↓ select · c copy markup · enter/esc back · q quit",
   scanning: "q quit",
   error: "q quit",
 };
@@ -62,7 +62,7 @@ export function Help(): ReactNode {
       <Text>
         /audit /optimize [@file…] /preset {"<name>"} [@file…] /out {"<dir>"}
       </Text>
-      <Text>/select all|none|warn /doctor /help /quit</Text>
+      <Text>/select all|none|warn /snippet @file /doctor /help /quit</Text>
       <Text dimColor>esc closes this</Text>
     </Box>
   );

@@ -5,7 +5,7 @@ import type { Plan } from "../core/plan/types.js";
 import { defaultSelection, type Model, type Row } from "./model.js";
 
 export type View = "scanning" | "list" | "review" | "running" | "done" | "error";
-export type Overlay = null | "help" | "details" | "outdir" | "command" | "doctor";
+export type Overlay = null | "help" | "details" | "outdir" | "command" | "doctor" | "snippet";
 
 export const PRESET_CYCLE = ["photo", "hero", "icon"] as const;
 
@@ -37,8 +37,20 @@ export interface RunProgress {
   progress: Record<string, number>;
 }
 
+export interface SnippetView {
+  source: string;
+  code: string;
+  hints: string[];
+  /** How it was copied, or null if it could not be (the code is still shown). */
+  copied: string | null;
+}
+
 export interface State {
   view: View;
+  /** The snippet overlay's content. */
+  snippet: SnippetView | null;
+  /** Highlighted file on the results screen; `c` copies its snippet. */
+  doneCursor: number;
   /** Bumped to request a (re)scan; the app runs the audit whenever it changes. */
   scanId: number;
   overlay: Overlay;
@@ -67,6 +79,8 @@ export const EMPTY_MODEL: Model = { rows: [], reportOnly: [], covered: 0, skippe
 export function initialState(outDir: string): State {
   return {
     view: "scanning",
+    snippet: null,
+    doneCursor: 0,
     scanId: 0,
     overlay: null,
     scan: null,
@@ -109,6 +123,9 @@ export type Action =
   | { type: "run-progress"; path: string; fraction: number }
   | { type: "run-item-done" }
   | { type: "run-done"; result: RunResult }
+  | { type: "snippet"; snippet: SnippetView }
+  | { type: "snippet-copied"; copied: string | null }
+  | { type: "done-move"; delta: number; max: number }
   | { type: "rescan" }
   | { type: "cancel" }
   | { type: "back" }
@@ -272,7 +289,21 @@ export function reducer(state: State, action: Action): State {
       return state.run ? { ...state, run: { ...state.run, done: state.run.done + 1 } } : state;
 
     case "run-done":
-      return { ...state, view: "done", result: action.result, cancelling: false };
+      return { ...state, view: "done", result: action.result, cancelling: false, doneCursor: 0 };
+
+    case "snippet":
+      return { ...state, overlay: "snippet", snippet: action.snippet, input: "", status: null };
+
+    case "snippet-copied":
+      return state.snippet
+        ? { ...state, snippet: { ...state.snippet, copied: action.copied } }
+        : state;
+
+    case "done-move":
+      return {
+        ...state,
+        doneCursor: Math.max(0, Math.min(action.max, state.doneCursor + action.delta)),
+      };
 
     case "rescan":
       return { ...state, view: "scanning", scanId: state.scanId + 1, scan: null, overlay: null };

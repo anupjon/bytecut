@@ -65,3 +65,22 @@ export function fakeAnalysis(over: Partial<ImageAnalysis> = {}): ImageAnalysis {
     ...over,
   };
 }
+
+/**
+ * Deterministic RGBA pixels for the BlurHash reference vectors. The same function produced
+ * `test/fixtures/blurhash-reference.json` with the reference `blurhash` package, so do not
+ * change it without regenerating those vectors.
+ */
+export function vectorPixels(seed: number, w: number, h: number): Uint8ClampedArray {
+  const px = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      px[i] = (x * 37 + y * 11 + seed * 53) % 256;
+      px[i + 1] = (x * 5 + y * 29 + seed * 97) % 256;
+      px[i + 2] = (((x * y) % 256) + seed * 17) % 256;
+      px[i + 3] = 255;
+    }
+  }
+  return px;
+}

@@ -23,6 +23,7 @@ import { buildPlan, DEFAULT_PUBLIC_PATH, type PresetChoice } from "../plan/build
 import { withVideos } from "./plan-media.js";
 import type { Plan } from "../plan/types.js";
 import { getImagePreset } from "../presets/index.js";
+import type { PlaceholderKind } from "../placeholders/types.js";
 import { collectAssets } from "../scan/collect.js";
 import type { VideoEngine } from "../video/types.js";
 
@@ -38,6 +39,11 @@ export interface OptimizeOptions {
   /** Folder served at the site root (relative to projectRoot); drives the mirrored layout. */
   staticRoot?: string;
   publicPath?: string;
+  /**
+   * Placeholder recorded in the manifest for each source: a dominant colour by default, or
+   * `none` to record (and remove) nothing. Refreshing it never re-encodes anything.
+   */
+  placeholder?: PlaceholderKind | "none";
   /** Force one preset for every image instead of classifying. */
   presetOverride?: string;
   /** Per-file preset by source path (relative, POSIX); wins over `presetOverride` and the classifier. */
@@ -275,9 +281,18 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     ...engine.versions(),
   });
 
+  const placeholdersChanged = await refreshPlaceholders(updated, finalPlan, {
+    kind: options.placeholder ?? "dominant-color",
+    engine,
+    readSource: (path) => fs.readSource(path),
+    readOutput: (path) => fs.readOutput(path),
+    projectRoot,
+  });
+
   // Only touch the manifest when its content changed, so an unchanged run is a no-op in git.
   // `tools` is informational and ignored for that comparison.
   const touched =
+    placeholdersChanged ||
     result.items.some((i) => i.status !== "skipped") ||
     (result.videos ?? []).some((v) => v.status !== "skipped");
   if (touched) {
@@ -336,4 +351,68 @@ export function videoNotes(
     notes.push("libvmaf not available: using the preset's fixed quality (no VMAF search).");
   }
   return notes;
+}
+
+/**
+ * Brings every entry's placeholder in line with `kind`, in place on a manifest this call owns.
+ * Only entries whose recorded source matches the plan are touched: an entry left over from an
+ * older source describes content that no longer exists. Returns whether anything changed.
+ */
+async function refreshPlaceholders(
+  manifest: Manifest,
+  plan: Plan,
+  deps: {
+    kind: PlaceholderKind | "none";
+    engine: ImageEngine;
+    readSource(absolutePath: string): Promise<Buffer>;
+    readOutput(relativePosixPath: string): Promise<Buffer | null>;
+    projectRoot: string;
+  },
+): Promise<boolean> {
+  const { kind, engine } = deps;
+  if (kind !== "none" && !engine.placeholder) return false;
+  let changed = false;
+
+  for (const item of plan.items) {
+    const entry = manifest.sources[item.source];
+    if (!entry || item.skip || entry.sha256 !== item.sourceSha256) continue;
+    if (kind === "none") {
+      if (entry.placeholder) {
+        const { placeholder: _gone, ...rest } = entry;
+        void _gone;
+        manifest.sources[item.source] = rest;
+        changed = true;
+      }
+      continue;
+    }
+    if (entry.placeholder?.kind === kind) continue;
+    const data = await deps.readSource(resolve(deps.projectRoot, ...item.source.split("/")));
+    manifest.sources[item.source] = {
+      ...entry,
+      placeholder: await engine.placeholder!(data, kind),
+    };
+    changed = true;
+  }
+
+  for (const item of plan.videos ?? []) {
+    const entry = manifest.videos[item.source];
+    if (!entry || item.skip || entry.sha256 !== item.sourceSha256) continue;
+    if (kind === "none") {
+      if (entry.placeholder) {
+        const { placeholder: _gone, ...rest } = entry;
+        void _gone;
+        manifest.videos[item.source] = rest;
+        changed = true;
+      }
+      continue;
+    }
+    if (entry.placeholder?.kind === kind) continue;
+    // The poster is already a small image of the video's first moments.
+    const poster = entry.outputs.find((o) => o.role === "poster" && o.status === "written");
+    const data = poster ? await deps.readOutput(poster.path) : null;
+    if (!data) continue;
+    manifest.videos[item.source] = { ...entry, placeholder: await engine.placeholder!(data, kind) };
+    changed = true;
+  }
+  return changed;
 }

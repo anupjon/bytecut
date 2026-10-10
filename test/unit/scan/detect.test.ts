@@ -30,7 +30,11 @@ describe("detectProject", () => {
     ["vite", { vite: "6.0.0" }],
   ] as const)("detects %s from dependencies", async (framework, deps) => {
     const root = await project({ "package.json": pkg(deps) });
-    expect(await detectProject(root)).toEqual({ framework, ...PUBLIC_DEFAULTS });
+    expect(await detectProject(root)).toEqual({
+      framework,
+      react: "react" in deps,
+      ...PUBLIC_DEFAULTS,
+    });
   });
 
   it("looks at devDependencies too", async () => {
@@ -60,18 +64,32 @@ describe("detectProject", () => {
 
   it("static with a public folder uses it", async () => {
     const root = await project({ "index.html": "", public: null });
-    expect(await detectProject(root)).toEqual({ framework: "static", ...PUBLIC_DEFAULTS });
+    expect(await detectProject(root)).toEqual({
+      framework: "static",
+      react: false,
+      ...PUBLIC_DEFAULTS,
+    });
   });
 
   it("static without a public folder scans the root into _bytecut", async () => {
     const root = await project({ "index.html": "" });
     expect(await detectProject(root)).toEqual({
       framework: "static",
+      react: false,
       include: ["."],
       outDir: "_bytecut",
       publicPath: "/_bytecut",
       staticRoot: ".",
     });
+  });
+
+  it("records whether react is a dependency (decides JSX vs HTML under Vite)", async () => {
+    const withReact = await project({ "package.json": pkg({ vite: "6", react: "19" }) });
+    expect(await detectProject(withReact)).toMatchObject({ framework: "vite", react: true });
+    const withVue = await project({ "package.json": pkg({ vite: "6", vue: "3" }) });
+    expect(await detectProject(withVue)).toMatchObject({ framework: "vite", react: false });
+    const devOnly = await project({ "package.json": pkg({}, { vite: "6", react: "19" }) });
+    expect((await detectProject(devOnly)).react).toBe(true);
   });
 
   it("survives an unparseable package.json", async () => {

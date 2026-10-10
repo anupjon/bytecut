@@ -3,7 +3,7 @@ import pkg from "../../package.json" with { type: "json" };
 import { guarded } from "./errors.js";
 import { runDefault } from "./interactive.js";
 
-const SUBCOMMANDS = ["audit", "optimize", "doctor"];
+const SUBCOMMANDS = ["audit", "optimize", "snippet", "doctor"];
 
 const main = defineCommand({
   meta: {
@@ -22,6 +22,7 @@ const main = defineCommand({
   subCommands: {
     audit: () => import("./commands/audit.js").then((m) => m.default),
     optimize: () => import("./commands/optimize.js").then((m) => m.default),
+    snippet: () => import("./commands/snippet.js").then((m) => m.default),
     doctor: () => import("./commands/doctor.js").then((m) => m.default),
   },
 });

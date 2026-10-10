@@ -234,6 +234,46 @@ suite("video pipeline with real ffmpeg (M5)", () => {
     expect(await readFile(join(root, OUT, "bytecut-manifest.json"), "utf8")).toBe(manifest);
   });
 
+  it("records the exact codec string, which matches the file and appears in the snippet", async () => {
+    const root = await project(["heavy.mp4"]);
+    await runOptimize(root);
+    const m = parseManifest(await readFile(join(root, OUT, "bytecut-manifest.json"), "utf8"));
+    const entry = m.videos["public/media/heavy.mp4"]!;
+    const { readVideoCodecString } = await import("../../src/core/video/codecs.js");
+    const { buildSnippet } = await import("../../src/core/snippets/build.js");
+
+    for (const out of entry.outputs.filter((o) => o.role === "video")) {
+      const fromFile = await readVideoCodecString(join(root, OUT, out.path));
+      expect(fromFile).not.toBeNull();
+      // Audio was kept (content-video), so AAC-LC is appended.
+      expect(out.codecs).toBe(`${fromFile}, mp4a.40.2`);
+    }
+    const av1 = entry.outputs.find((o) => o.codec === "av1")!;
+    expect(av1.codecs).toMatch(/^av01\.0\.\d\d[MH]\.08, mp4a\.40\.2$/);
+    const h264 = entry.outputs.find((o) => o.codec === "h264")!;
+    expect(h264.codecs).toMatch(/^avc1\.[0-9a-f]{6}, mp4a\.40\.2$/);
+
+    const snippet = buildSnippet(
+      m,
+      { source: "public/media/heavy.mp4", originalUrl: "/media/heavy.mp4" },
+      { format: "html" },
+    )!;
+    expect(snippet.code).toContain(`codecs="${av1.codecs}"`);
+    expect(snippet.code).toContain(`codecs="${h264.codecs}"`);
+    // AV1 before H.264, so a browser that can play AV1 takes it and others fall through.
+    expect(snippet.code.indexOf(av1.codecs!)).toBeLessThan(snippet.code.indexOf(h264.codecs!));
+  });
+
+  it("records a placeholder for a video, made from its poster", async () => {
+    const root = await project(["heavy.mp4"]);
+    await runOptimize(root);
+    const m = parseManifest(await readFile(join(root, OUT, "bytecut-manifest.json"), "utf8"));
+    expect(m.videos["public/media/heavy.mp4"]!.placeholder).toMatchObject({
+      kind: "dominant-color",
+    });
+    expect(m.videos["public/media/heavy.mp4"]!.placeholder!.value).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
   it("records the encoder and parameters per output in the manifest", async () => {
     const root = await project(["heavy.mp4"]);
     await runOptimize(root);

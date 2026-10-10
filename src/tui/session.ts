@@ -15,6 +15,10 @@ import type {
 } from "../core/execute/run.js";
 import { SafeFs } from "../core/fs-safe.js";
 import { toPosix } from "../core/posix.js";
+import { parseManifest } from "../core/manifest/io.js";
+import { MANIFEST_FILE } from "../core/manifest/types.js";
+import { buildSnippet, originalUrl, snippetFormatFor } from "../core/snippets/index.js";
+import { readFile } from "node:fs/promises";
 import type { ProjectInfo } from "../core/scan/detect.js";
 import { buildModel, type Model } from "./model.js";
 import type { Review, ReviewItem } from "./state.js";
@@ -59,6 +63,11 @@ export interface Session {
     handlers: RunHandlers,
     signal: AbortSignal,
   ): Promise<RunResult>;
+  /** The markup for an optimized file, or why there is none. */
+  snippet(
+    source: string,
+    outDir: string,
+  ): Promise<{ code: string; hints: string[] } | { error: string }>;
   /** Null when `outDir` is acceptable, otherwise the reason it is not (§6.5). */
   validateOutDir(outDir: string, sources: string[]): Promise<string | null>;
 }
@@ -171,6 +180,23 @@ export function createSession(options: SessionOptions): Session {
         throw new BytecutError("BAD_ARGUMENTS", "Nothing was run.");
       }
       return outcome.result;
+    },
+
+    async snippet(source, outDir) {
+      let text: string;
+      try {
+        text = await readFile(resolve(projectRoot, outDir, MANIFEST_FILE), "utf8");
+      } catch {
+        return { error: `No manifest in ${outDir} yet: run the optimizer first.` };
+      }
+      const manifest = parseManifest(text);
+      const built = buildSnippet(
+        manifest,
+        { source, originalUrl: originalUrl(source, project.staticRoot) },
+        { format: snippetFormatFor(project) },
+      );
+      if (!built) return { error: `${source} has not been optimized yet.` };
+      return { code: built.code, hints: built.hints };
     },
 
     async validateOutDir(outDir, sources) {

@@ -10,7 +10,8 @@
 | M3 Scanner, classifier, audit       | Complete locally; CI not yet run |
 | M4 TUI                              | Complete locally; CI not yet run |
 | M5 Video                            | Complete locally; CI not yet run |
-| M6 – M9                             | Not started                      |
+| M6 Web outputs                      | Complete locally; CI not yet run |
+| M7 – M9                             | Not started                      |
 
 ## M0 — what changed
 
@@ -179,51 +180,87 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
   degradation notes; the TUI lists videos, plans them, shows live percent, and skipped videos with
   what to install.
 
+## M6 — what changed
+
+- **`bytecut snippet <file…>`**: prints the `<picture>` or `<video>` markup for files that have been
+  optimized, from the manifest only (no encoding). `--format html|jsx`, `--alt`, `--sizes`,
+  `--class`, `--priority`, `--lazy`, `--json`. Markup alone goes to stdout; advice goes to stderr so
+  the output pipes cleanly. A file that is not optimized yet fails with the exact command to run.
+- **One element tree, two syntaxes** (`src/core/snippets/`): HTML and JSX cannot drift apart. JSX gets
+  `className`, `srcSet`, `fetchPriority`, `playsInline`, `autoPlay`, self-closing tags and style
+  objects; HTML keeps the lowercase spellings. Values are escaped; URLs are percent-encoded per segment.
+- **Format follows the framework**: Next.js → JSX; Vite with `react` → JSX, otherwise HTML; Astro and
+  static → HTML. `detectProject` now records whether `react` is a dependency.
+- **Images**: AVIF and WebP `<source>`s with every width, explicit `sizes`, and an `<img>` whose
+  `src` is the **largest WebP** (confirmed), with `width`/`height` so there is no layout shift.
+  Priority presets (`hero`) emit `fetchpriority="high"` and no lazy loading.
+- **Videos**: AV1 `<source>` first, then H.264, each with its **exact codec string** read from the
+  file's own `avcC`/`av1C` boxes (plus `mp4a.40.2` when audio was kept). Without it a browser that
+  cannot decode AV1 still picks the AV1 source and never tries the fallback. Background and GIF
+  replacements loop silently; content gets controls and `preload="metadata"`.
+- **Placeholders** in the manifest (additive, still version 3): `dominant-color` (default, confirmed),
+  `lqip` (16 px WebP data URI) or `blurhash`; `--placeholder <kind|none>` on `optimize`. Refreshing
+  them never re-encodes anything, and a changed source never keeps the old one. Videos use their
+  poster. Snippets apply them as `style` or `data-blurhash`.
+- **BlurHash** is implemented in-house (no dependency) and verified against the reference package on
+  recorded vectors; see the deliberate deviation under Known issues.
+- **TUI**: `/snippet @file` (works for files already optimized and hidden from the list) and `c` on
+  the results screen. The clipboard uses a native tool if present, else OSC 52, and always shows the
+  markup so a failed copy is never a dead end.
+
 ## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
-- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 588 tests in 45 files (~110 s;
-  M4 was ~100 s). One CPU-heavy integration test timed out at 30 s only under full-suite parallel load
-  (it passes alone in ~12 s), so it now has a 120 s timeout; the run before that change was 587/588.
-- **Real ffmpeg** (gated on its presence, with a visible skip notice): outputs verified with ffprobe
-  for codec, dimensions, pixel format, frame rate, audio presence/absence and faststart (moov
-  before mdat); AV1/H.264/poster byte-identical across two runs; a second run encodes nothing.
-- **Cancel kills ffmpeg**: with a real slow encode, abort rejects within seconds, no process with
-  the temp path remains (checked with `pgrep`), and no temp or partial file is left.
-- **Degradation with real binaries**: a wrapper `ffmpeg` that hides the AV1 encoders yields H.264 +
-  poster with the skip reported; a bad `--ffmpeg` path lists videos as needing ffmpeg while images
-  still process.
-- **Estimate accuracy**: an 8 s clip sampled at three points came within **11.6%** of the real AV1/
-  H.264 output (one clip: thin evidence).
-- Mutation-checked: writing larger-than-source outputs, leaving temp files, no per-output reuse,
-  counting unavailable codecs as misses, skipping the ownership check, and not killing ffmpeg each
-  fail the intended tests.
+- `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 736 tests in 55 files
+  (~130 s; M5 was ~110 s). The only failure in the full run was an M4 test pinning the exact usage
+  line, which now correctly lists `snippet`; fixed and re-run alone.
+- **Generated JSX is type-checked with the real `tsc`** against `@types/react` in a sample component
+  (every snippet kind, every placeholder style, an alt text needing escapes). Negative controls prove
+  it can fail: `class`, lowercase `fetchpriority`/`srcset`, an HTML string `style` and `autoplay`
+  are each rejected.
+- **Golden snippets for five frameworks** (Next, Astro, Vite+React, Vite, static) covering a lazy
+  image, an image with alt/class/sizes, a priority hero, a background video, a content video and a GIF
+  replacement. Goldens are excluded from Prettier (it had rewritten the HTML ones).
+- **BlurHash**: all 9 recorded vectors match the corrected reference byte for byte; the npm package's
+  own output is pinned too, so the deviation cannot widen unnoticed.
+- **Codec strings** read from real MP4s agree with ffprobe's profile and level, and match what is
+  recorded in the manifest and emitted in the snippet.
+- Mutation-checked (each mutation asserted as applied): priority ignored, source order swapped, codec
+  strings dropped, URLs not encoded, values not escaped, JSX using HTML names, the BlurHash maximum
+  reverted, a placeholder surviving a source change, and placeholders recomputed every run.
 
 ## Decisions
 
-See "Decisions log" in AGENTS.md. M5 additions: manifest v3 reads v2; video as additive collections;
-SVT-AV1 preset 6; estimates on by default and cached; capability-independent plans.
+See "Decisions log" in AGENTS.md. M6 additions: dominant colour by default; in-house BlurHash with the
+absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather than `next/image`.
 
 ## Known issues
 
-- **CRF values are first guesses** (AV1 32/36/38, H.264 23/26/28), as are the classifier's name tokens
-  and the 45 s "short" limit. Bad guesses cost bytes or quality, not data.
-- **The video estimate is one number from three 1.5 s samples**, a real encode but a thin sample of
-  a long, varied video. Verified on a single clip. Estimates are labelled `~`.
-- **Cold video audits are slow**: six tiny clips took ~11 s; a long 1080p library will take minutes.
-  Results are cached by hash, and the TUI shows scan progress, not per-file names.
-- **AV1 is roughly realtime at preset 6** on this machine (3 s of 640x360 in 2.8 s), so long videos
-  take minutes. Cancelling is prompt (ffmpeg is killed), unlike the image engine.
-- **Windows/macOS ffmpeg builds are untested**: the Windows runner's ffmpeg may lack `libsvtav1`;
-  capability-gated tests should skip or degrade, but this has not run there.
-- **The poster uses a frame at 10% of the duration**; no "best frame" detection, so it can be a
-  blank frame for a video that fades in slowly.
-- **HDR, rotation metadata, multiple audio tracks and subtitles are not handled specially**: the first
-  video and first audio stream are used, and rotation relies on ffmpeg's default autorotate.
-- **No VMAF search** (M9): `libvmaf` only changes the note, never the output.
-- **Carried over**: SVG output still unimplemented; `--json` dry-run only; no `--prune`; no locking;
-  `.gitignore` coverage partial; detection cwd-only; CI, macOS/Windows and a real SIGINT unverified.
+- **BlurHash deviates from `blurhash@2.0.5` on purpose.** The package takes the largest _signed_ AC
+  value; the algorithm text says largest _absolute_. They differ only when the largest magnitude is
+  negative, and there the package clips: about 4x the error on a dark-to-light gradient in our
+  measurements (24 vs 6). On photos and noise the hashes are identical or within ~6%. We follow the
+  spec; a hash made here can differ from one the npm package makes for the same pixels. Decoders are
+  unaffected either way. (You chose this over byte-matching the package.)
+- **`sizes` defaults to `100vw`**, which is only right for full-width images. For a card in a grid
+  the browser may download a larger candidate than needed; pass `--sizes`.
+- **Alt text is empty by default** (a decorative image) and a hint says so. Nothing infers a description.
+- **URLs ignore framework path prefixes** (Next `basePath`/`assetPrefix`, Vite `base`): they are the
+  manifest's `publicPath` plus the output path.
+- **`next/image` is not used**: plain `<picture>` JSX, since the outputs are pre-generated and committed.
+- **BlurHash needs a decoder on the page**; the snippet only carries `data-blurhash`. LQIP bytes can
+  differ across libwebp builds, so regenerating on another platform rewrites those manifest lines.
+- **Background videos use `preload="auto"`**, which fetches the whole file; a long loop may want `none`.
+- **OSC 52 has no acknowledgement**: terminals and tmux configurations that ignore it fail silently
+  (the markup is still shown). Windows `clip` mishandles some non-ASCII text.
+- **An older bytecut cannot read a manifest written by this one** if it contains the new optional
+  fields (the schema is strict); there is no published older release, so this only affects local builds.
+- **Priority comes from the preset or `--priority`** per run; a persistent per-file choice needs the
+  M7 config. SVGs have no snippet (SVG output is still unimplemented and unowned).
+- **Carried over**: `--json` dry-run only; no `--prune`; no locking; `.gitignore` coverage partial;
+  detection cwd-only; CI, macOS/Windows and a real SIGINT unverified.
 
 ## Next
 
-M6 — web outputs: `<picture>`/`<video>` snippets (HTML and JSX), placeholders in the manifest
-(blurhash/LQIP/dominant colour) and `priority` presets. Needs a confirmed plan first (§10).
+M7 — config: loader for `.ts`/`.json`/`.toml`, zod schema, `explain`, `init`, and the "save these
+choices?" prompt that finally persists preset overrides and the placeholder setting. Needs a
+confirmed plan first (§10).

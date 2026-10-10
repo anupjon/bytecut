@@ -6,6 +6,7 @@ import type {
   VideoOutputResult,
 } from "../execute/run.js";
 import type { Plan } from "../plan/types.js";
+import { IMAGE_PRESETS } from "../presets/index.js";
 import {
   MANIFEST_VERSION,
   type Manifest,
@@ -69,12 +70,16 @@ function mergeItem(
     }
   }
 
+  const priority = IMAGE_PRESETS[item.preset]?.priority === true;
   return {
     sha256: item.sourceSha256,
     bytes: item.sourceBytes,
     width: item.sourceWidth,
     height: item.sourceHeight,
     preset: item.preset,
+    ...(priority ? { priority } : {}),
+    // A placeholder describes the content it was made from, so it only survives an unchanged source.
+    ...(sameSource && old?.placeholder ? { placeholder: old.placeholder } : {}),
     outputs: [...merged.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
   };
 }
@@ -99,6 +104,7 @@ function toManifestVideoOutput(out: VideoOutputResult, publicPath: string): Mani
     ...(out.quality !== undefined ? { quality: out.quality } : {}),
     ...(out.effort !== undefined ? { effort: out.effort } : {}),
     ...(out.at !== undefined ? { at: out.at } : {}),
+    ...(out.codecs ? { codecs: out.codecs } : {}),
     encoder: out.encoder ?? "unknown",
     status: out.status === "already-optimal" ? "already-optimal" : "written",
   };
@@ -140,6 +146,7 @@ function mergeVideoItem(
     height: item.sourceHeight,
     durationSec: item.durationSec,
     preset: item.preset,
+    ...(sameSource && old?.placeholder ? { placeholder: old.placeholder } : {}),
     outputs: [...merged.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
   };
 }

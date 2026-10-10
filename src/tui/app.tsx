@@ -10,10 +10,11 @@ import {
 } from "react";
 import type { ProjectInfo } from "../core/scan/detect.js";
 import { completeMention, fuzzyFiles, parseCommand } from "./commands.js";
+import { copyToClipboard, systemClipboardDeps, type CopyResult } from "./clipboard.js";
 import { CommandBar, computeSuggestions } from "./components/commandbar.js";
 import { Header, Help, StatusLine } from "./components/layout.js";
 import { Details, FileList, ReportOnly } from "./components/list.js";
-import { DoneView, ReviewView, RunView } from "./components/run.js";
+import { DoneView, ReviewView, RunView, SnippetOverlay } from "./components/run.js";
 import { displayOutDir, type Session } from "./session.js";
 import { PRESET_CYCLE, initialState, reducer, rowAt, type State } from "./state.js";
 
@@ -33,6 +34,8 @@ export interface AppProps {
   outDir: string;
   /** Formatted `doctor` report, loaded on demand for /doctor. */
   loadDoctor: () => Promise<string>;
+  /** Puts text on the clipboard. Injectable so tests never touch the real one. */
+  copy?: (text: string) => Promise<CopyResult>;
 }
 
 export function App(props: AppProps): ReactNode {
@@ -170,6 +173,33 @@ export function App(props: AppProps): ReactNode {
     return out;
   }, []);
 
+  const copy = props.copy ?? ((text: string) => copyToClipboard(text, systemClipboardDeps()));
+
+  /** Builds the markup for an optimized file, shows it, and copies it. */
+  const showSnippet = useCallback(
+    async (source: string) => {
+      const s = stateRef.current;
+      const built = await session.snippet(source, s.outDir);
+      if ("error" in built) {
+        dispatch({ type: "status", message: built.error });
+        return;
+      }
+      dispatch({
+        type: "snippet",
+        snippet: { source, code: built.code, hints: built.hints, copied: null },
+      });
+      const result = await copy(built.code);
+      dispatch({ type: "snippet-copied", copied: result.ok ? result.method : null });
+    },
+    [session, copy],
+  );
+
+  /** Files on the results screen, in the order formatSummary lists them. */
+  const doneFiles = useCallback((): string[] => {
+    const r = stateRef.current.result;
+    return r ? [...r.items.map((i) => i.source), ...(r.videos ?? []).map((v) => v.source)] : [];
+  }, []);
+
   const execute = useCallback(
     async (text: string) => {
       const s = stateRef.current;
@@ -221,6 +251,22 @@ export function App(props: AppProps): ReactNode {
           } else dispatch({ type: "status", message: "Usage: /select <all|none|warn>" });
           return;
         }
+        case "snippet": {
+          // Any scanned file counts, including ones already optimized and hidden from the list.
+          const known = s.files;
+          const wanted = parsed.mentions[0];
+          const hit = wanted
+            ? known.includes(wanted)
+              ? wanted
+              : fuzzyFiles(wanted, known, 1)[0]
+            : rowAt(s)?.source;
+          if (!hit) {
+            dispatch({ type: "status", message: "Usage: /snippet @file (an optimized file)" });
+            return;
+          }
+          await showSnippet(hit);
+          return;
+        }
         case "doctor":
           dispatch({ type: "overlay", overlay: "doctor" });
           void props.loadDoctor().then(setDoctor);
@@ -233,7 +279,7 @@ export function App(props: AppProps): ReactNode {
           return;
       }
     },
-    [applyOutDir, exit, props, resolveMentions, startReview],
+    [applyOutDir, exit, props, resolveMentions, showSnippet, startReview],
   );
 
   // --- keys ---------------------------------------------------------------------------
@@ -316,6 +362,17 @@ export function App(props: AppProps): ReactNode {
       return;
     }
 
+    if (s.overlay === "snippet") {
+      if (input === "c" && s.snippet) {
+        void copy(s.snippet.code).then((r) =>
+          dispatch({ type: "snippet-copied", copied: r.ok ? r.method : null }),
+        );
+      } else if (key.escape || key.return || input === "q") {
+        dispatch({ type: "back" });
+      }
+      return;
+    }
+
     if (s.overlay) {
       if (key.escape || key.return || input === "q" || input === "?" || input === "d") {
         dispatch({ type: "back" });
@@ -352,9 +409,18 @@ export function App(props: AppProps): ReactNode {
       case "running":
         if (key.escape) cancelRun();
         break;
-      case "done":
-        if (key.return || key.escape) dispatch({ type: "back" });
+      case "done": {
+        const files = doneFiles();
+        if (key.upArrow || input === "k")
+          dispatch({ type: "done-move", delta: -1, max: files.length - 1 });
+        else if (key.downArrow || input === "j")
+          dispatch({ type: "done-move", delta: 1, max: files.length - 1 });
+        else if (input === "c") {
+          const file = files[s.doneCursor];
+          if (file) void showSnippet(file);
+        } else if (key.return || key.escape) dispatch({ type: "back" });
         break;
+      }
       case "scanning":
       case "error":
         break;
@@ -383,6 +449,8 @@ export function App(props: AppProps): ReactNode {
     body = <ReviewView review={state.review} outDir={state.outDir} />;
   } else if (state.view === "running") {
     body = <RunView state={state} />;
+  } else if (state.overlay === "snippet" && state.snippet) {
+    body = <SnippetOverlay snippet={state.snippet} />;
   } else if (state.view === "done") {
     body = <DoneView state={state} />;
   } else if (state.overlay === "help") {

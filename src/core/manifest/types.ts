@@ -1,3 +1,4 @@
+import type { Placeholder } from "../placeholders/types.js";
 import type { ImageFormat } from "../presets/photo.js";
 
 export const MANIFEST_FILE = "bytecut-manifest.json";
@@ -42,6 +43,10 @@ export interface ManifestSource {
   width: number;
   height: number;
   preset: string;
+  /** Show this image with `fetchpriority="high"` and no lazy loading (the LCP candidate). */
+  priority?: boolean;
+  /** A tiny stand-in while the image loads, made from the source. */
+  placeholder?: Placeholder;
   /**
    * Every output bytecut owns for this source. Entries the current plan no longer produces
    * are orphans, and are only deletable because they are listed here (§6.3).
@@ -69,6 +74,11 @@ export interface ManifestVideoOutput {
   quality?: number;
   effort?: number;
   at?: number;
+  /**
+   * RFC 6381 codecs for `<source type>`, e.g. `av01.0.08M.08` or `avc1.640028, mp4a.40.2`.
+   * Read from the file's own boxes; absent in manifests written before M6.
+   */
+  codecs?: string;
   /** Encoder actually used, with the ffmpeg version. */
   encoder: string;
   status: ManifestOutputStatus;
@@ -81,6 +91,10 @@ export interface ManifestVideoSource {
   height: number;
   durationSec: number;
   preset: string;
+  /** Whether the video preset is a loop/background (no controls) is derived from `preset`. */
+  priority?: boolean;
+  /** Made from the poster frame. */
+  placeholder?: Placeholder;
   outputs: ManifestVideoOutput[];
 }
 

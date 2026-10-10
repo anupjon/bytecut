@@ -5,6 +5,8 @@ export type Framework = "next" | "astro" | "vite" | "static";
 
 export interface ProjectInfo {
   framework: Framework;
+  /** `react` is a dependency, which decides JSX vs HTML for snippets under Vite. */
+  react: boolean;
   /** POSIX paths relative to the project root that are scanned when no paths are given. */
   include: string[];
   /** Default output folder, relative to the project root. */
@@ -71,10 +73,12 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
     }
   }
 
+  const react = deps.has("react");
   const hasPublic = await isDirectory(join(root, "public"));
   if (framework !== "static" || hasPublic) {
     return {
       framework,
+      react,
       include: ["public"],
       outDir: "public/_bytecut",
       publicPath: "/_bytecut",
@@ -83,6 +87,7 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
   }
   return {
     framework,
+    react,
     include: ["."],
     outDir: "_bytecut",
     publicPath: "/_bytecut",

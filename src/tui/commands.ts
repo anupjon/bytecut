@@ -16,6 +16,11 @@ export const COMMANDS: CommandInfo[] = [
     usage: "/preset <photo|hero|icon> [@file…]",
     description: "Set the preset for the highlighted (or mentioned) files",
   },
+  {
+    name: "snippet",
+    usage: "/snippet @file",
+    description: "Copy the <picture>/<video> markup for an optimized file",
+  },
   { name: "out", usage: "/out <dir>", description: "Change the output folder" },
   { name: "select", usage: "/select <all|none|warn>", description: "Change the selection" },
   { name: "doctor", usage: "/doctor", description: "Show Node, sharp and ffmpeg status" },

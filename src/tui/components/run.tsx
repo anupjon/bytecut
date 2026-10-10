@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { formatSummary } from "../../cli/format.js";
 import { formatBytes, plural } from "../../core/units.js";
 import type { OutputResult, VideoOutputResult } from "../../core/execute/run.js";
-import type { Review, State } from "../state.js";
+import type { Review, SnippetView, State } from "../state.js";
 
 const BAR_WIDTH = 30;
 
@@ -119,6 +119,38 @@ export function RunView(props: { state: State }): ReactNode {
   );
 }
 
+export function SnippetOverlay(props: { snippet: SnippetView }): ReactNode {
+  const { snippet } = props;
+  const lines = snippet.code.split("\n");
+  return (
+    <Box flexDirection="column" borderStyle="round" paddingX={1}>
+      <Text bold wrap="truncate-middle">
+        {snippet.source}
+      </Text>
+      {lines.map((line, i) => (
+        <Text key={i} wrap="truncate-end">
+          {line}
+        </Text>
+      ))}
+      <Box flexDirection="column" marginTop={1}>
+        {snippet.copied ? (
+          <Text color="green">Copied to the clipboard ({snippet.copied}).</Text>
+        ) : (
+          <Text color="yellow">
+            Could not reach the clipboard: select the text above to copy it.
+          </Text>
+        )}
+        {snippet.hints.map((h) => (
+          <Text key={h} dimColor wrap="truncate-end">
+            Note: {h}
+          </Text>
+        ))}
+        <Text dimColor>c copy again · esc close</Text>
+      </Box>
+    </Box>
+  );
+}
+
 export function DoneView(props: { state: State }): ReactNode {
   const { result } = props.state;
   if (!result) return null;
@@ -134,7 +166,12 @@ export function DoneView(props: { state: State }): ReactNode {
       </Text>
       <Box flexDirection="column" marginTop={1}>
         {files.slice(0, 12).map((line, i) => (
-          <Text key={i} wrap="truncate-end">
+          <Text
+            key={i}
+            wrap="truncate-end"
+            color={i === props.state.doneCursor ? "cyan" : undefined}
+          >
+            {i === props.state.doneCursor ? "› " : "  "}
             {line}
           </Text>
         ))}

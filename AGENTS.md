@@ -157,7 +157,10 @@ As implemented (`src/core/manifest/types.ts`; version 3 adds `videos`, and versi
 source has `sha256, bytes, width, height, preset, outputs[]`; each output has `path, url, format, width,
 height, bytes, sha256?, lossless, quality, effort, encoder, status` where `status` is `written`,
 `already-optimal` (no file, no sha256) or `stale`. Keys are sorted and there are no timestamps, so an
-unchanged run leaves the file byte-identical. `outputs` lists everything bytecut owns for that source,
+unchanged run leaves the file byte-identical. Sources and videos may also carry `priority` (an LCP candidate: snippets emit `fetchpriority="high"`
+and no lazy loading) and a `placeholder` (`dominant-color`, `lqip` or `blurhash`); video outputs carry
+`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive.
+`outputs` lists everything bytecut owns for that source,
 including orphans, which is what makes them deletable under §6.3.
 
 ### ffmpeg sourcing
@@ -423,4 +426,12 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — ffmpeg writes only to temp paths reserved by `SafeFs` and published atomically; sampling writes nothing (raw stream on stdout) — keeps §3's "all writes go through one module" true with a child process doing the writing.
 - 2026-10-10 — Background-video is chosen only on evidence (no audio on a short clip, or a backdrop-like name on a short clip) — removing audio is the one irreversible change, so doubt keeps it (§6.8).
 - 2026-10-10 — An output whose encoder is unavailable is reported as skipped and does not count as a cache miss — otherwise the other codec would be re-encoded on every run.
+- 2026-10-10 — Snippets are generated from the manifest alone (no encoding), as one element tree rendered to HTML or JSX; the format follows the framework (Next and Vite+React → JSX, otherwise HTML) — keeps the two syntaxes from drifting and makes `snippet` instant.
+- 2026-10-10 — `<img src>` inside `<picture>` is the largest WebP, not the original (confirmed with you) — every browser that understands <picture> supports WebP, so even the fallback path serves optimized bytes.
+- 2026-10-10 — Video `<source>` elements carry exact codec strings read from the MP4's own `avcC`/`av1C` boxes, AV1 first — without a codecs parameter a browser that cannot decode AV1 still selects the AV1 source and never tries the fallback.
+- 2026-10-10 — The default placeholder is a dominant colour (confirmed with you); LQIP and BlurHash are opt-in with `--placeholder` — 7 characters per file keeps the committed manifest small and its diffs quiet.
+- 2026-10-10 — BlurHash is implemented in-house and uses the largest ABSOLUTE AC value as the algorithm text specifies, deviating from `blurhash@2.0.5` (signed maximum) — measured ~4x lower error on dark-to-light gradients; chosen with you after seeing the numbers. Verified against the reference on recorded vectors, with the package's own output pinned.
+- 2026-10-10 — `hero` is the only `priority` preset; priority is stored in the manifest, and `--priority`/`--lazy` override it per snippet — so custom presets later cannot silently lose it.
+- 2026-10-10 — Generated JSX is type-checked with the real compiler in tests, with negative controls — attribute casing (`fetchPriority`, `srcSet`, `playsInline`) is exactly what hand-written generators get wrong.
+- 2026-10-10 — The TUI copies with a native tool, then OSC 52, and always shows the markup — no dependency, works over SSH, and a failed copy is never a dead end.
 

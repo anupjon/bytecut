@@ -71,6 +71,8 @@ export interface VideoOutputResult {
   quality?: number;
   effort?: number;
   at?: number;
+  /** RFC 6381 codecs for `<source type>`. */
+  codecs?: string;
   encoder?: string;
   status: OutputStatus;
   error?: string;

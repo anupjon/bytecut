@@ -10,6 +10,11 @@ export interface ImagePreset {
    * content is ambiguous, and lossless AVIF is slow and rarely wins).
    */
   lossless?: boolean;
+  /**
+   * Images using this preset are likely the largest contentful paint: snippets mark them
+   * `fetchpriority="high"` and never lazy-load them.
+   */
+  priority?: boolean;
 }
 
 export const PHOTO_PRESET: ImagePreset = {

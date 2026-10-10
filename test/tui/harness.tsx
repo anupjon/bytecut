@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import type { ProjectInfo } from "../../src/core/scan/detect.js";
 import { App } from "../../src/tui/app.js";
 import type { Model, Row } from "../../src/tui/model.js";
+import type { CopyResult } from "../../src/tui/clipboard.js";
 import type { Review } from "../../src/tui/state.js";
 import type { Session } from "../../src/tui/session.js";
 import type { RunResult } from "../../src/core/execute/run.js";
@@ -19,6 +20,7 @@ export const KEY = {
 
 export const project: ProjectInfo = {
   framework: "next",
+  react: true,
   include: ["public"],
   outDir: "public/_bytecut",
   publicPath: "/_bytecut",
@@ -66,6 +68,7 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     scan: 0,
     review: [] as Array<{ sources: string[]; presets: Record<string, string>; outDir: string }>,
     run: [] as Array<{ sources: string[]; presets: Record<string, string>; outDir: string }>,
+    snippet: [] as string[],
   };
   const m = over.model ?? model([row("a.jpg"), row("b.jpg"), row("c.jpg", { severity: "info" })]);
   const session: Session = {
@@ -97,13 +100,27 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     async validateOutDir() {
       return null;
     },
+    async snippet(source) {
+      calls.snippet.push(source);
+      return {
+        code: `<picture>\n  <img src="/_bytecut/${source}.webp" alt="" />\n</picture>`,
+        hints: [
+          'alt text is empty (marks the image decorative). Set it with --alt "…" if it carries meaning.',
+        ],
+      };
+    },
     ...over,
   };
   return { session, calls };
 }
 
-export function mount(session: Session, node?: (props: Parameters<typeof App>[0]) => ReactElement) {
+export function mount(
+  session: Session,
+  node?: (props: Parameters<typeof App>[0]) => ReactElement,
+  copy?: (text: string) => Promise<CopyResult>,
+) {
   const props = {
+    ...(copy ? { copy } : {}),
     session,
     project,
     projectRoot: "/p",

@@ -152,3 +152,60 @@ describe("parseManifest", () => {
     expect(() => parseManifest(JSON.stringify({ ...sample, extra: 1 }))).toThrow();
   });
 });
+
+describe("M6 fields (additive, still version 3)", () => {
+  const withNew = (): Manifest => ({
+    ...sample,
+    sources: {
+      ...sample.sources,
+      "a/one.jpg": {
+        ...sample.sources["a/one.jpg"]!,
+        priority: true,
+        placeholder: { kind: "dominant-color", value: "#336699" },
+      },
+    },
+    videos: {
+      "v/a.mp4": {
+        sha256: "e".repeat(64),
+        bytes: 5000,
+        width: 640,
+        height: 360,
+        durationSec: 3,
+        preset: "background-video",
+        placeholder: { kind: "lqip", value: "data:image/webp;base64,AAAA" },
+        outputs: [
+          {
+            path: "v/a/a-640.av1.mp4",
+            url: "/_bytecut/v/a/a-640.av1.mp4",
+            role: "video",
+            format: "mp4",
+            codec: "av1",
+            width: 640,
+            height: 360,
+            bytes: 100,
+            sha256: "f".repeat(64),
+            codecs: "av01.0.01M.08",
+            encoder: "libsvtav1 (ffmpeg 6.1.1)",
+            status: "written",
+          },
+        ],
+      },
+    },
+  });
+
+  it("round-trips priority, placeholders and codec strings", () => {
+    const m = withNew();
+    expect(parseManifest(serializeManifest(m))).toEqual(m);
+  });
+
+  it("a manifest without them is unchanged (older files stay valid)", () => {
+    expect(parseManifest(serializeManifest(sample))).toEqual(sample);
+    expect(sample.sources["a/one.jpg"]).not.toHaveProperty("placeholder");
+  });
+
+  it("rejects an unknown placeholder kind", () => {
+    const m = withNew() as unknown as { sources: Record<string, { placeholder: unknown }> };
+    m.sources["a/one.jpg"]!.placeholder = { kind: "sparkle", value: "x" };
+    expect(() => parseManifest(JSON.stringify(m))).toThrowError(/not a valid manifest/);
+  });
+});

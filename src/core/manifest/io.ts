@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BytecutError } from "../errors.js";
 import { formatZodIssues } from "../plan/schema.js";
+import { PLACEHOLDER_KINDS } from "../placeholders/types.js";
 import { MANIFEST_MIN_VERSION, MANIFEST_VERSION, type Manifest } from "./types.js";
 
 const outputSchema = z
@@ -21,6 +22,10 @@ const outputSchema = z
     encoder: z.string(),
     status: z.enum(["written", "already-optimal", "stale"]),
   })
+  .strict();
+
+const placeholderSchema = z
+  .object({ kind: z.enum(PLACEHOLDER_KINDS as [string, ...string[]]), value: z.string() })
   .strict();
 
 const videoOutputSchema = z
@@ -46,6 +51,7 @@ const videoOutputSchema = z
     quality: z.number().int().optional(),
     effort: z.number().int().optional(),
     at: z.number().optional(),
+    codecs: z.string().optional(),
     encoder: z.string(),
     status: z.enum(["written", "already-optimal", "stale"]),
   })
@@ -65,6 +71,8 @@ const manifestSchema = z
           width: z.number().int().nonnegative(),
           height: z.number().int().nonnegative(),
           preset: z.string(),
+          priority: z.boolean().optional(),
+          placeholder: placeholderSchema.optional(),
           outputs: z.array(outputSchema),
         })
         .strict(),
@@ -81,6 +89,8 @@ const manifestSchema = z
             height: z.number().int().nonnegative(),
             durationSec: z.number().nonnegative(),
             preset: z.string(),
+            priority: z.boolean().optional(),
+            placeholder: placeholderSchema.optional(),
             outputs: z.array(videoOutputSchema),
           })
           .strict(),

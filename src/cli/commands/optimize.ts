@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import pkg from "../../../package.json" with { type: "json" };
 import { optimize } from "../../core/commands/optimize.js";
+import { isPlaceholderKind, type PlaceholderKind } from "../../core/placeholders/types.js";
 import { detectProject } from "../../core/scan/detect.js";
 import { sharpImageEngine } from "../../core/engines/image.js";
 import { BytecutError } from "../../core/errors.js";
@@ -51,6 +52,11 @@ export default defineCommand({
       description:
         "Force a preset (images: photo, hero, icon; video: background-video, content-video, gif-to-video)",
     },
+    placeholder: {
+      type: "string",
+      description:
+        "Placeholder to record in the manifest: dominant-color (default), lqip, blurhash or none",
+    },
     ffmpeg: {
       type: "string",
       description: "Path to the ffmpeg binary (otherwise BYTECUT_FFMPEG, then PATH)",
@@ -86,6 +92,18 @@ export default defineCommand({
       savedPlan = parsePlan(text, planFile);
     }
 
+    let placeholder: PlaceholderKind | "none" | undefined;
+    if (args.placeholder !== undefined) {
+      const wanted = String(args.placeholder);
+      if (wanted !== "none" && !isPlaceholderKind(wanted)) {
+        throw new BytecutError(
+          "BAD_ARGUMENTS",
+          `Unknown placeholder "${wanted}". Use dominant-color, lqip, blurhash or none.`,
+        );
+      }
+      placeholder = wanted as PlaceholderKind | "none";
+    }
+
     const controller = new AbortController();
     const onSigint = () => controller.abort();
     if (!dryRun) process.once("SIGINT", onSigint);
@@ -118,6 +136,7 @@ export default defineCommand({
       staticRoot: project.staticRoot,
       publicPath: args["public-path"] ?? project.publicPath,
       ...(args.preset ? { presetOverride: args.preset } : {}),
+      ...(placeholder ? { placeholder } : {}),
       execute: !dryRun,
       force: Boolean(args.force),
       concurrency: Math.min(4, availableParallelism()),

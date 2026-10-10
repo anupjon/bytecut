@@ -9,4 +9,5 @@ export const HERO_PRESET: ImagePreset = {
     avif: { quality: 65, effort: 4 },
     webp: { quality: 82, effort: 4 },
   },
+  priority: true,
 };

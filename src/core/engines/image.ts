@@ -1,5 +1,7 @@
 import sharp from "sharp";
 import type { ImageFormat } from "../presets/photo.js";
+import { componentsFor, encodeBlurhash } from "../placeholders/blurhash.js";
+import type { Placeholder, PlaceholderKind } from "../placeholders/types.js";
 import { hasGpsIfd } from "./exif.js";
 import type {
   EncodeRequest,
@@ -58,8 +60,40 @@ function encoderNames(): Record<ImageFormat, string> {
   };
 }
 
+const LQIP_EDGE = 16;
+const BLURHASH_EDGE = 32;
+
+async function makePlaceholder(input: Buffer, kind: PlaceholderKind): Promise<Placeholder> {
+  switch (kind) {
+    case "dominant-color": {
+      const { dominant } = await sharp(input).rotate().stats();
+      const hex = (n: number) => n.toString(16).padStart(2, "0");
+      return { kind, value: `#${hex(dominant.r)}${hex(dominant.g)}${hex(dominant.b)}` };
+    }
+    case "lqip": {
+      const webp = await sharp(input)
+        .rotate()
+        .resize(LQIP_EDGE, LQIP_EDGE, { fit: "inside" })
+        .webp({ quality: 40, effort: 6 })
+        .toBuffer();
+      return { kind, value: `data:image/webp;base64,${webp.toString("base64")}` };
+    }
+    case "blurhash": {
+      const { data, info } = await sharp(input)
+        .rotate()
+        .resize(BLURHASH_EDGE, BLURHASH_EDGE, { fit: "inside" })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const [cx, cy] = componentsFor(info.width, info.height);
+      return { kind, value: encodeBlurhash(data, info.width, info.height, cx, cy) };
+    }
+  }
+}
+
 export const sharpImageEngine: ImageEngine = {
   encoders: encoderNames,
+  placeholder: makePlaceholder,
 
   versions() {
     const v = sharp.versions as Record<string, string | undefined>;

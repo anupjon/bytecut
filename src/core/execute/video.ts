@@ -11,6 +11,7 @@ import type {
   PlannedVideoOutput,
   VideoPlanItem,
 } from "../plan/types.js";
+import { readVideoCodecString } from "../video/codecs.js";
 import { AbortedError } from "../video/ffmpeg-engine.js";
 import type { VideoProbe } from "../video/probe.js";
 import type { EncoderName, VideoEngine } from "../video/types.js";
@@ -269,6 +270,7 @@ function fromRecorded(r: ManifestVideoOutput): VideoOutputResult {
     ...(r.quality !== undefined ? { quality: r.quality } : {}),
     ...(r.effort !== undefined ? { effort: r.effort } : {}),
     ...(r.at !== undefined ? { at: r.at } : {}),
+    ...(r.codecs ? { codecs: r.codecs } : {}),
     encoder: r.encoder,
     status: r.status === "already-optimal" ? "already-optimal" : "unchanged",
   };
@@ -325,6 +327,13 @@ async function makeVideo(
       ctx.signal ?? new AbortController().signal,
     );
     const { size } = await stat(temp);
+    // Exact codec string from the file itself, plus AAC-LC when audio was kept.
+    const video = await readVideoCodecString(temp).catch(() => null);
+    const codecs = video
+      ? planned.audio === "keep" && probe.hasAudio
+        ? `${video}, mp4a.40.2`
+        : video
+      : undefined;
     const fps = planned.maxFps !== null ? Math.min(probe.fps, planned.maxFps) : probe.fps;
     const result: VideoOutputResult = {
       path: planned.path,
@@ -340,6 +349,7 @@ async function makeVideo(
       maxWidth: planned.maxWidth,
       maxFps: planned.maxFps,
       audio: planned.audio,
+      ...(codecs ? { codecs } : {}),
       encoder: encoderLabel(encoder),
       status: "written",
     };

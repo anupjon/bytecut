@@ -550,7 +550,7 @@ describe("plain `bytecut` when it is not an interactive terminal (M4)", () => {
   it("--help and subcommands are unaffected", async () => {
     const root = await nextProject();
     const help = await cli(root, ["--help"]);
-    expect(help.stdout).toMatch(/audit\|optimize\|doctor/);
+    expect(help.stdout).toMatch(/audit\|optimize\|snippet\|doctor/);
     const audit = await cli(root, ["audit", "--no-cache"]);
     expect(audit.stdout).toContain("image/no-modern-format");
   });

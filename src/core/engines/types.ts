@@ -1,3 +1,4 @@
+import type { Placeholder, PlaceholderKind } from "../placeholders/types.js";
 import type { ImageFormat } from "../presets/photo.js";
 
 export type SourceFormat = "jpeg" | "png" | "webp" | "avif" | "gif" | "other";
@@ -48,6 +49,11 @@ export interface EncodeResult {
 export interface ImageEngine {
   analyze(input: Buffer): Promise<ImageAnalysis>;
   encode(input: Buffer, request: EncodeRequest): Promise<EncodeResult>;
+  /**
+   * A tiny stand-in for the image while it loads. Optional so engines that cannot decode
+   * images (fakes) need not implement it; callers skip placeholders when it is absent.
+   */
+  placeholder?(input: Buffer, kind: PlaceholderKind): Promise<Placeholder>;
   /** What `encode` would report for each format, so drift can be detected without encoding. */
   encoders(): Record<ImageFormat, string>;
   /** Informational tool versions for the manifest. */

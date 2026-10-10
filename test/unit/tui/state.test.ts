@@ -244,3 +244,31 @@ describe("review → run → done", () => {
     expect(s.review).toBeNull();
   });
 });
+
+describe("snippet overlay and results cursor", () => {
+  it("opens the snippet overlay with the code, then records how it was copied", () => {
+    let s = run(abc(), {
+      type: "snippet",
+      snippet: { source: "a.jpg", code: "<img>", hints: [], copied: null },
+    });
+    expect(s).toMatchObject({ overlay: "snippet", snippet: { copied: null } });
+    s = run(s, { type: "snippet-copied", copied: "pbcopy" });
+    expect(s.snippet!.copied).toBe("pbcopy");
+    s = run(s, { type: "back" });
+    expect(s.overlay).toBeNull();
+  });
+
+  it("ignores a copy result when no snippet is open", () => {
+    expect(run(abc(), { type: "snippet-copied", copied: "pbcopy" }).snippet).toBeNull();
+  });
+
+  it("moves the results cursor within bounds and resets it on a new run", () => {
+    let s = run(abc(), { type: "done-move", delta: 5, max: 2 });
+    expect(s.doneCursor).toBe(2);
+    s = run(s, { type: "done-move", delta: -9, max: 2 });
+    expect(s.doneCursor).toBe(0);
+    s = run(s, { type: "done-move", delta: 1, max: 2 });
+    s = run(s, { type: "run-done", result: { items: [], cancelled: false, warnings: [] } });
+    expect(s.doneCursor).toBe(0);
+  });
+});
