@@ -368,8 +368,9 @@ Keep this list accurate as scripts change.
 3. Implement the smallest change that satisfies the current milestone's acceptance criteria.
 4. Run `pnpm typecheck && pnpm lint && pnpm test` before declaring anything done. Report actual results, not expected ones.
 5. Update `PROGRESS.md`: milestone status, what changed, decisions made, known issues, next step.
-6. If you make a decision this file doesn't cover (library choice, format detail), record it in the "Decisions log" below in one line.
-7. Never mark a milestone complete with failing or skipped tests that should run.
+6. **Keep `README.md` in sync.** Any user-facing change (a command or flag, a config field, a default, the output layout or formats, requirements, guarantees, or a limitation that is now lifted or new) updates `README.md` in the same change. Re-check the README's examples still work (for instance, run its config through `bytecut explain`) and that its command table matches `--help`.
+7. If you make a decision this file doesn't cover (library choice, format detail), record it in the "Decisions log" below in one line.
+8. Never mark a milestone complete with failing or skipped tests that should run.
 
 ### When to stop and ask
 - A guardrail would need to bend.
