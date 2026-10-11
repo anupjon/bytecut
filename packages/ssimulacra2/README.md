@@ -1,10 +1,10 @@
-# @bytecut/ssimulacra2
+# bytecut-ssimulacra2
 
 The [SSIMULACRA 2](https://github.com/cloudinary/ssimulacra2) image quality metric as WebAssembly
 for Node.js 22+. No native dependency and no install script.
 
 ```js
-import { loadScorer, createPool } from "@bytecut/ssimulacra2";
+import { loadScorer, createPool } from "bytecut-ssimulacra2";
 
 const scorer = await loadScorer();
 // Packed 8-bit sRGB, 3 bytes per pixel. 100 is identical; higher is better.

@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@bytecut/ssimulacra2':
+      bytecut-ssimulacra2:
         specifier: workspace:*
         version: link:packages/ssimulacra2
       citty:

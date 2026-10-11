@@ -6,9 +6,9 @@ import type { QualityScorer } from "./types.js";
  * that never searches for a quality never pays for the module (or the workers).
  */
 export async function createWasmScorer(options: { size?: number } = {}): Promise<QualityScorer> {
-  let lib: typeof import("@bytecut/ssimulacra2");
+  let lib: typeof import("bytecut-ssimulacra2");
   try {
-    lib = await import("@bytecut/ssimulacra2");
+    lib = await import("bytecut-ssimulacra2");
   } catch (error) {
     throw new BytecutError(
       "SCORER_UNAVAILABLE",
@@ -19,7 +19,7 @@ export async function createWasmScorer(options: { size?: number } = {}): Promise
   const pool = lib.createPool({ size: options.size ?? 2 });
   return {
     kind: "wasm",
-    label: "@bytecut/ssimulacra2",
+    label: "bytecut-ssimulacra2",
     score: (reference, distorted) => pool.score(reference, distorted),
     close: () => pool.close(),
   };

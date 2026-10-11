@@ -273,7 +273,7 @@ tests green, and the progress log (§10) updated. Do not start the next mileston
 
 ### M9 — Quality targets & compare (stretch)
 - Perceptual target search: binary-search encoder quality to the smallest output meeting `ssimulacra2` / `vmaf`, using sampled clips for video.
-- SSIMULACRA2 via **WASM**: compile the Rust crate `rust-av/ssimulacra2` to WASM and publish it as a separate package we own (e.g. `@bytecut/ssimulacra2`). Verify the crate's license before vendoring.
+- SSIMULACRA2 via **WASM**: compile the Rust crate `rust-av/ssimulacra2` to WASM and publish it as a separate package we own (e.g. `bytecut-ssimulacra2`). Verify the crate's license before vendoring.
   - Load it lazily, only when a quality search runs.
   - Search on a representative crop (~512px) to pick encoder quality, then score the full-size output once to confirm it meets the target.
   - Run scoring in worker threads.
@@ -458,7 +458,7 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — `check --fail-on error|warn` is added beyond the milestone text (confirmed with you) — zero-config CI could otherwise never fail, since only `project/over-budget` defaults to `error`.
 - 2026-10-10 — `--changed` defaults to `HEAD` (local changes) and is measured from the merge-base; it reads only local git data and never fetches (§6.11), failing with the fix for a shallow clone — predictable on every CI provider.
 - 2026-10-10 — `check --report md|json` writes to stdout only and there is no output-file flag — §6.2 permits writes only in `outDir` and the config, so CI redirects.
-- 2026-10-10 — SSIMULACRA2 ships as a pnpm workspace package `@bytecut/ssimulacra2` with a committed prebuilt `.wasm` (confirmed with you) — the spec's "separate package we own", with no Rust needed to install, test or run CI.
+- 2026-10-10 — SSIMULACRA2 ships as a pnpm workspace package `bytecut-ssimulacra2` with a committed prebuilt `.wasm` (confirmed with you) — the spec's "separate package we own", with no Rust needed to install, test or run CI.
 - 2026-10-10 — The WASM build matches the reference C++ tool within 0.032 on 16 recorded pairs and the test tolerance is 0.1 — measured against libjxl `tools/ssimulacra2` (commit ef67fde), not asserted; rayon is off and worker threads provide parallelism.
 - 2026-10-10 — A named native scorer path that is missing falls back to the built-in WASM scorer with a note, and never to PATH — a typo must not silently pick a different binary (as with ffmpeg), while the scorer can always fall back because WASM is always there.
 - 2026-10-10 — Native scorer inputs are written as temp files inside `outDir` through `SafeFs.writeTemp` and removed after each score — keeps §3's single write module true for a child process that reads files.
@@ -472,3 +472,4 @@ Keep this list accurate as scripts change.
 - 2026-10-11 — `vmaf` uses ffmpeg's own `libvmaf` and, without it, falls back to the fixed CRF with a warning and records `search` without a `score` (per §4's "no libvmaf" rule) — the output still caches, and is searched once the filter exists.
 - 2026-10-11 — The same scorer selection serves images and video (confirmed with you) — one flag, one lazy start, native when present and WASM otherwise.
 - 2026-10-11 — `/compare` is a loopback-only read-only server with an unguessable path token, index-addressed files and a Host check, serving one self-contained page (confirmed with you: images and video) — it cannot be reached from another machine or a web page, and a request can never name a path.
+- 2026-10-11 — The scorer package is the unscoped `bytecut-ssimulacra2`, not `@bytecut/ssimulacra2` (confirmed with you) — the `@bytecut` npm scope is owned by someone else, and an unscoped name needs no organisation.

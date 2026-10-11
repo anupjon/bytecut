@@ -283,10 +283,10 @@ discardTemp` hand it a validated temp path inside outDir and only publish it ato
 Stages 2 (image search + `maxSize`) and 3 (video, `vmaf`, `/compare`) are not started; stage 1 was a
 go/no-go gate and it passed.
 
-- **`packages/ssimulacra2` (`@bytecut/ssimulacra2`)**: a pnpm workspace package. The Rust crate
+- **`packages/ssimulacra2` (`bytecut-ssimulacra2`)**: a pnpm workspace package. The Rust crate
   `rust-av/ssimulacra2` 0.5.1 (**BSD-2-Clause**; notice kept in `LICENSE`/`NOTICE`) compiled to a
   62 KB `.wasm`, pinned by `rust/Cargo.lock`. The `.wasm` is **committed**, so installing, testing and
-  CI never need Rust; `pnpm --filter @bytecut/ssimulacra2 build:wasm` rebuilds it
+  CI never need Rust; `pnpm --filter bytecut-ssimulacra2 build:wasm` rebuilds it
   (`rustup target add wasm32-unknown-unknown`). `rayon` is off; parallelism is a pool of
   `worker_threads`, each with its own instance. The crate drags in the wasm-bindgen runtime through a
   dependency; its three imports are stubbed to throw if ever reached (none is reachable from the
@@ -527,8 +527,9 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
   in the manifest and keeps it out of cache validity so runs do not ping-pong between machines.
 - **The WASM binary is a build artifact in git** (62 KB). Review a rebuild by comparing the sha256
   `build-wasm.sh` prints and the pinned `Cargo.lock`; there is no reproducible-build check yet.
-- **`@bytecut/ssimulacra2` is not published**, and the `@bytecut` npm scope must be yours first (not
-  verifiable from here). Until it is published, `bytecut` resolves it through the workspace only.
+- **`bytecut-ssimulacra2` is not published.** It is unscoped because the `@bytecut` npm scope is taken
+  by someone else (confirmed by you). Until it is published, `bytecut` resolves it through the
+  workspace only, and `bytecut` itself cannot be installed from npm.
 - **Config is found in the working directory only** (as detection already is); no walking upwards.
 - **`concurrency` is image concurrency**; video stays at 1. `framework` replaces the detected
   framework but not React detection, which still reads `package.json`.
@@ -543,5 +544,5 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
 ## Next
 
 M0–M9 are complete locally. Open items that need you, not code: a real CI run on Linux/macOS/Windows,
-publishing `@bytecut/ssimulacra2` (and owning the `@bytecut` scope), a `vmaf` run on an ffmpeg with
+publishing `bytecut-ssimulacra2` then `bytecut`, a `vmaf` run on an ffmpeg with
 libvmaf, and an owner for SVG output (no milestone covers it).

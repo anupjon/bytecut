@@ -1,5 +1,5 @@
 {
-  "name": "@bytecut/ssimulacra2",
+  "name": "bytecut-ssimulacra2",
   "version": "0.1.0",
   "description": "SSIMULACRA2 image quality metric as WebAssembly, for Node.js. No native dependency.",
   "type": "module",

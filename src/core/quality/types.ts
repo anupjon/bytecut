@@ -9,7 +9,7 @@ export interface RgbImage {
 export interface QualityScorer {
   /** Which implementation produced the scores; recorded because they differ in the last decimals. */
   readonly kind: "wasm" | "native";
-  /** The implementation's identity for the manifest, e.g. `@bytecut/ssimulacra2 0.1.0`. */
+  /** The implementation's identity for the manifest, e.g. `bytecut-ssimulacra2 0.1.0`. */
   readonly label: string;
   score(reference: RgbImage, distorted: RgbImage): Promise<number>;
   close(): Promise<void>;

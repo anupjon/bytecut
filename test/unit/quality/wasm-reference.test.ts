@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPool, loadScorer, MIN_SIDE } from "@bytecut/ssimulacra2";
+import { createPool, loadScorer, MIN_SIDE } from "bytecut-ssimulacra2";
 
 const dir = join(import.meta.dirname, "../../fixtures/ssimulacra2");
 const golden = JSON.parse(await readFile(join(dir, "reference-scores.json"), "utf8")) as {

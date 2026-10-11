@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { loadScorer } from "@bytecut/ssimulacra2";
+import { loadScorer } from "bytecut-ssimulacra2";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { makeImageFixtures } from "../../scripts/make-fixtures.js";
