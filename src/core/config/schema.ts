@@ -81,7 +81,7 @@ export const presetSchema = z
       .min(1)
       .optional(),
     crf: crfByCodec.optional(),
-    // perceptual search: images and video (`floor` and `maxSize` are image-only)
+    // perceptual search: images and video; `floor` and `maxSize` cap a file's size (both)
     ssimulacra2: z.number().min(1).max(100).optional(),
     vmaf: z.number().min(1).max(100).optional(),
     floor: z.number().min(1).max(100).optional(),
@@ -102,16 +102,19 @@ export const presetSchema = z
     if (preset.vmaf !== undefined && preset.ssimulacra2 !== undefined) {
       say("vmaf", "cannot be combined with `ssimulacra2`: a preset searches for one metric");
     }
-    if (preset.floor !== undefined && preset.ssimulacra2 === undefined) {
+    // The metric whose target `floor` and `maxSize` work against.
+    const target = preset.ssimulacra2 ?? preset.vmaf;
+    const metric = preset.ssimulacra2 !== undefined ? "ssimulacra2" : "vmaf";
+    if (preset.floor !== undefined && target === undefined) {
       say(
         "floor",
-        "needs `ssimulacra2`: it is the lowest score allowed when `maxSize` forces quality down",
+        "needs `ssimulacra2` (or `vmaf` on a video preset): it is the lowest score allowed when `maxSize` forces quality down",
       );
     }
-    if (preset.maxSize !== undefined && preset.ssimulacra2 === undefined) {
+    if (preset.maxSize !== undefined && target === undefined) {
       say(
         "maxSize",
-        "needs `ssimulacra2`, so there is a quality target to hold while fitting the size",
+        "needs `ssimulacra2` (or `vmaf` on a video preset), so there is a quality target to hold while fitting the size",
       );
     }
     if (preset.maxSize !== undefined && preset.floor === undefined) {
@@ -120,18 +123,10 @@ export const presetSchema = z
         "is required with `maxSize`: how far quality may drop to fit is a tradeoff to state, not a default",
       );
     }
-    if (
-      preset.floor !== undefined &&
-      preset.ssimulacra2 !== undefined &&
-      preset.floor > preset.ssimulacra2
-    ) {
-      say("floor", `must not exceed \`ssimulacra2\` (${preset.ssimulacra2})`);
+    if (preset.floor !== undefined && target !== undefined && preset.floor > target) {
+      say("floor", `must not exceed \`${metric}\` (${target})`);
     }
-    if (
-      preset.floor !== undefined &&
-      preset.maxSize === undefined &&
-      preset.ssimulacra2 !== undefined
-    ) {
+    if (preset.floor !== undefined && preset.maxSize === undefined && target !== undefined) {
       say("floor", "only applies with `maxSize`");
     }
   });

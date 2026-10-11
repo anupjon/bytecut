@@ -12,6 +12,7 @@ import {
 
 const row = (source: string, over: Partial<Row> = {}): Row => ({
   source,
+  kind: "image",
   bytes: 1000,
   width: 800,
   height: 600,
@@ -169,6 +170,49 @@ describe("presets", () => {
     expect(run(abc(), { type: "cycle-preset", sources: ["nope.jpg"], to: "icon" }).presets).toEqual(
       {},
     );
+  });
+
+  describe("for videos", () => {
+    const withVideo = () =>
+      loaded([
+        row("a.jpg"),
+        row("clip.mp4", { kind: "video", preset: "content-video" }),
+        row("loop.gif", { kind: "video", preset: "gif-to-video" }),
+      ]);
+
+    it("cycles a video row through the video presets, never photo/hero/icon", () => {
+      let s = run(withVideo(), { type: "cursor-to", source: "clip.mp4" });
+      const seen: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        s = run(s, { type: "cycle-preset" });
+        seen.push(effectivePreset(s, rowAt(s)!));
+      }
+      expect(seen).toEqual(["gif-to-video", "background-video", "content-video", "gif-to-video"]);
+    });
+
+    it("refuses an image preset for a video and a video preset for an image", () => {
+      const s = run(withVideo(), {
+        type: "cycle-preset",
+        sources: ["clip.mp4", "a.jpg"],
+        to: "hero",
+      });
+      expect(s.presets).toEqual({ "a.jpg": "hero" });
+      const t = run(withVideo(), {
+        type: "cycle-preset",
+        sources: ["clip.mp4", "a.jpg"],
+        to: "background-video",
+      });
+      expect(t.presets).toEqual({ "clip.mp4": "background-video" });
+    });
+
+    it("uses the config's own video preset names", () => {
+      const s = reducer(initialState("out", ["photo"], ["content-video", "clips"]), {
+        type: "scan-done",
+        model: model([row("clip.mp4", { kind: "video", preset: "content-video" })]),
+        files: ["clip.mp4"],
+      });
+      expect(run(s, { type: "cycle-preset" }).presets).toEqual({ "clip.mp4": "clips" });
+    });
   });
 });
 

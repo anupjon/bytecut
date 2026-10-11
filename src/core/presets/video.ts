@@ -6,6 +6,10 @@ export type VideoPresetName = "background-video" | "content-video" | "gif-to-vid
 export interface VideoSearch {
   metric: "ssimulacra2" | "vmaf";
   target: number;
+  /** Lowest score allowed while fitting `maxBytes`. Set together with it. */
+  floor?: number;
+  /** Cap per output file: quality is lowered to `floor`, then the width stepped down. */
+  maxBytes?: number;
 }
 
 export interface VideoPreset {

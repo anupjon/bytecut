@@ -139,13 +139,22 @@ describe("buildCatalog", () => {
     expect(video["content-video"]!.search).toBeUndefined();
   });
 
-  it("keeps the size cap and floor image-only, and vmaf video-only", () => {
-    expect(fails({ v: { extends: "content-video", ssimulacra2: 80, floor: 60 } })).toMatch(
-      /"v" extends a video preset, so `floor` \(an image setting\) does not apply/,
-    );
-    expect(fails({ v: { extends: "content-video", maxSize: 1000 } })).toMatch(
-      /"v" extends a video preset, so `maxSize` \(an image setting\) does not apply/,
-    );
+  it("lets a video preset cap its size with either metric, and keeps vmaf video-only", () => {
+    const { video } = buildCatalog({
+      a: { extends: "content-video", ssimulacra2: 80, floor: 60, maxSize: 5_000_000 },
+      b: { extends: "content-video", vmaf: 90, floor: 70, maxSize: 8_000_000 },
+    });
+    expect(video.a!.search).toEqual({
+      metric: "ssimulacra2",
+      target: 80,
+      floor: 60,
+      maxBytes: 5_000_000,
+    });
+    expect(video.b!.search).toEqual({ metric: "vmaf", target: 90, floor: 70, maxBytes: 8_000_000 });
+    const { origin } = buildCatalog({
+      a: { extends: "content-video", ssimulacra2: 80, floor: 60, maxSize: 5_000_000 },
+    });
+    expect(origin.a!.overrides).toEqual(["ssimulacra2", "floor", "maxSize"]);
     expect(fails({ p: { extends: "photo", vmaf: 90 } })).toMatch(
       /"p" extends an image preset, so `vmaf` \(a video metric\) does not apply/,
     );

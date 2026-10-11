@@ -388,6 +388,27 @@ result is cached.` Checked in a real pty on a 4K clip. The estimate is cached by
   the TUI video test now waits for the list row because the scanning screen names the file. The hook
   timeout is 120 s, since fixture generation in `beforeAll` could exceed 30 s under a full parallel run.
 
+## Video presets in the TUI, and a size cap for video (change after M9)
+
+- **Report**: `p` on a video row cycled photo / hero / icon, and there was no way to ask for a
+  target file size on video.
+- **TUI**: rows know whether they are an image or a video; `p` cycles `background-video`,
+  `content-video`, `gif-to-video` (plus the config's own) for video rows, and `/preset` only accepts
+  names that fit what it targets, listing them in the usage line.
+- **Size cap**: a video preset takes `maxSize` + `floor` with `ssimulacra2` or `vmaf`. Per output
+  (AV1 and H.264 each): find the CRF that meets the target, raise it to the lowest CRF whose
+  predicted size fits (sample bytes per second x duration, + audio), keep it only if it still scores
+  at or above `floor`, else step the width down by 20% (not below half) and repeat. The real file is
+  measured: over the cap it bumps the CRF by 2, at most 3 times, then narrows. Unmet = the item fails
+  and nothing is written (exit 1).
+- **Formats** (additive, no version bump): plan/manifest video `search` gains `floor`, `maxBytes` and
+  `plannedPath`; a narrower file is named for its width and the manifest remembers the planned path,
+  exactly as for images. The audit's video estimate is clamped to the cap.
+- **Tests**: fit/step units, executor tests with a fake engine (fits by CRF, narrows, floor held,
+  prediction wrong, unmet, cache hit/miss; five mutations caught), real-ffmpeg run that fits 60% of
+  the uncapped size and is a cache hit the second time.
+- **Not done**: a TUI key to type a size (config only, by your choice); a cap on image/vmaf mixes.
+
 ## Flat output layout (change after M9)
 
 - Outputs are written as `<outDir>/<source's own folders>/<basename>-<width>.<ext>`: the extra

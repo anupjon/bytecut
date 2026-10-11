@@ -76,7 +76,7 @@ export function formatPlan(plan: Plan, cache?: Map<string, CacheState>): string 
       if (out.role === "video") {
         const audio = out.audio === "strip" ? "no audio" : `audio ${out.audioBitrate}`;
         const mode = out.search
-          ? `${out.search.metric} >= ${out.search.target} (starts at crf ${out.crf})`
+          ? `${out.search.metric} >= ${out.search.target}${out.search.maxBytes !== undefined ? `, <= ${formatBytes(out.search.maxBytes)}` : ""} (starts at crf ${out.crf})`
           : `crf ${out.crf}`;
         lines.push(`  ${out.path}  (${out.codec}, ${out.width}w, ${mode}, ${audio})`);
       } else {
@@ -135,7 +135,8 @@ function searchNote(out: OutputResult): string {
 /** `  · crf 41 · vmaf 93.2`: what the search landed on and the worst clip's score. */
 function videoSearchNote(out: VideoOutputResult): string {
   if (!out.search || out.score === undefined || out.crf === undefined) return "";
-  return `  · crf ${out.crf} · ${out.search.metric} ${out.score.toFixed(1)}`;
+  const stepped = out.search.plannedPath ? " · width stepped down" : "";
+  return `  · crf ${out.crf} · ${out.search.metric} ${out.score.toFixed(1)}${stepped}`;
 }
 
 function videoOutputLine(out: VideoOutputResult, sourceBytes: number): string {

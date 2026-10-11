@@ -24,8 +24,6 @@ const IMAGE_ONLY = [
   "effort",
   "lossless",
   "priority",
-  "floor",
-  "maxSize",
 ] as const;
 const VIDEO_ONLY = ["audio", "maxWidth", "maxFps", "codecs", "crf"] as const;
 /** Fields that name a metric target; `vmaf` is video-only because libvmaf compares video. */
@@ -116,13 +114,25 @@ function applyVideo(name: string, base: VideoPreset, def: PresetConfig): VideoPr
   if (def.audio) next.audio = def.audio;
   if (def.maxWidth !== undefined) next.maxWidth = def.maxWidth;
   if (def.maxFps !== undefined) next.maxFps = def.maxFps;
-  if (def.ssimulacra2 !== undefined)
-    next.search = { metric: "ssimulacra2", target: def.ssimulacra2 };
-  if (def.vmaf !== undefined) next.search = { metric: "vmaf", target: def.vmaf };
+  const cap = {
+    ...(def.floor !== undefined ? { floor: def.floor } : {}),
+    ...(def.maxSize !== undefined ? { maxBytes: def.maxSize } : {}),
+  };
+  if (def.ssimulacra2 !== undefined) {
+    next.search = { metric: "ssimulacra2", target: def.ssimulacra2, ...cap };
+  }
+  if (def.vmaf !== undefined) next.search = { metric: "vmaf", target: def.vmaf, ...cap };
   return next;
 }
 
-const CHANGE_KEYS = [...IMAGE_ONLY, ...VIDEO_ONLY, ...METRICS, "target"] as const;
+const CHANGE_KEYS = [
+  ...IMAGE_ONLY,
+  ...VIDEO_ONLY,
+  ...METRICS,
+  "floor",
+  "maxSize",
+  "target",
+] as const;
 
 /**
  * Builds the catalog: built-ins plus the config's presets. A preset named like a built-in

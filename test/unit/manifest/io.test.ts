@@ -298,7 +298,7 @@ describe("manifest: video search records", () => {
     ).toThrow();
     expect(() =>
       parseManifest(
-        JSON.stringify(withVideo({ search: { metric: "vmaf", target: 90, floor: 70 } })),
+        JSON.stringify(withVideo({ search: { metric: "vmaf", target: 90, extra: true } })),
       ),
     ).toThrow();
     expect(() => parseManifest(JSON.stringify(withVideo({ scorer: "gpu" })))).toThrow();

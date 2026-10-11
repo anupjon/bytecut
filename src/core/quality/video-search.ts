@@ -3,6 +3,8 @@ import type { VideoProbe } from "../video/probe.js";
 import type { EncoderName, VideoClip, VideoCodec, VideoEngine } from "../video/types.js";
 import type { QualityScorer, RgbImage } from "./types.js";
 
+const evenDown = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
+
 /** Sampled clips: three windows of two seconds, or the whole video when it is short. */
 export const CLIP_SECONDS = 2;
 export const WHOLE_MAX_SECONDS = 6;
@@ -19,6 +21,20 @@ export const CRF_RANGE: Record<VideoCodec, { lo: number; hi: number }> = {
 /** A full-length encode that falls short of the sampled score is retried this many times. */
 export const MAX_CONFIRM_BUMPS = 3;
 export const CONFIRM_STEP = 2;
+/**
+ * Each width step is 20% narrower: a candidate costs a search and a full encode, so video
+ * steps further than images do (1920 → 1536 → 1228 → 982 before half is reached).
+ */
+export const WIDTH_STEP = 0.8;
+/** A picture less than half as wide is no longer the one that was asked for. */
+export const MIN_WIDTH_FRACTION = 0.5;
+
+/** The next width to try after `width`, or null when stepping down has reached half. */
+export function stepWidth(plannedWidth: number, width: number): number | null {
+  const next = evenDown(width * WIDTH_STEP);
+  const half = Math.ceil(plannedWidth * MIN_WIDTH_FRACTION);
+  return next < half || next >= width ? null : next;
+}
 
 export function clipsFor(durationSec: number): { clips: VideoClip[]; whole: boolean } {
   if (durationSec <= WHOLE_MAX_SECONDS) {
@@ -34,8 +50,6 @@ export function clipsFor(durationSec: number): { clips: VideoClip[]; whole: bool
   }));
   return { clips, whole: false };
 }
-
-const evenDown = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
 
 /** The size every scored frame is brought to: at most 512 wide, the output's aspect ratio. */
 export function scoreGeometry(
@@ -101,6 +115,42 @@ export async function findCrf(options: {
   return { ok: true, crf: good, score: scores.get(good)!, probes: scores.size };
 }
 
+export type FitOutcome =
+  { ok: true; crf: number; bytes: number } | { ok: false; bytes: number; crf: number };
+
+/**
+ * The lowest CRF in [lo, hi] whose predicted size fits `maxBytes`. Size only ever falls as the
+ * CRF rises, so this bisects; `lo` is where quality is best, so the first CRF that fits is the
+ * best quality that fits. Not ok when even `hi` is too big, with that size.
+ */
+export async function fitCrfToSize(options: {
+  lo: number;
+  hi: number;
+  maxBytes: number;
+  sizeAt(crf: number): Promise<number>;
+}): Promise<FitOutcome> {
+  const sizes = new Map<number, number>();
+  const size = async (crf: number) => {
+    const known = sizes.get(crf);
+    if (known !== undefined) return known;
+    const bytes = await options.sizeAt(crf);
+    sizes.set(crf, bytes);
+    return bytes;
+  };
+  const first = await size(options.lo);
+  if (first <= options.maxBytes) return { ok: true, crf: options.lo, bytes: first };
+  const last = await size(options.hi);
+  if (last > options.maxBytes) return { ok: false, crf: options.hi, bytes: last };
+  let bad = options.lo;
+  let good = options.hi;
+  while (good - bad > 1) {
+    const mid = Math.floor((bad + good) / 2);
+    if ((await size(mid)) <= options.maxBytes) good = mid;
+    else bad = mid;
+  }
+  return { ok: true, crf: good, bytes: sizes.get(good)! };
+}
+
 export interface VideoSearchRequest {
   engine: VideoEngine;
   metric: "ssimulacra2" | "vmaf";
@@ -125,6 +175,13 @@ export interface VideoSearcher {
   /** Whole-video searches are exact: the confirmation would repeat the same encode. */
   readonly whole: boolean;
   find(): Promise<CrfOutcome>;
+  /** The worst clip's score at `crf`, same metric as `find`. */
+  score(crf: number): Promise<number>;
+  /**
+   * Predicted video-stream bytes of the whole output at `crf`: the sampled clips' bytes per
+   * second over the full duration (exact when the whole video is the sample).
+   */
+  sizeAt(crf: number): Promise<number>;
   /** Score a finished output over the same clips, with the same metric. */
   confirm(outputPath: string, crf: number): Promise<number>;
 }
@@ -204,8 +261,21 @@ export function createVideoSearcher(request: VideoSearchRequest): VideoSearcher 
     return score;
   }
 
+  async function sizeAt(crf: number): Promise<number> {
+    const bytes = await Promise.all(
+      clips.map((clip) => request.engine.sampleBytes(sample(clip, crf), request.signal)),
+    );
+    const total = bytes.reduce((a, b) => a + b, 0);
+    const seconds = clips.reduce((a, c) => a + c.durationSec, 0);
+    return Math.round(
+      whole ? total : (total / Math.max(0.001, seconds)) * request.probe.durationSec,
+    );
+  }
+
   return {
     whole,
+    score: measure,
+    sizeAt,
     async find() {
       const range = CRF_RANGE[request.codec];
       return findCrf({

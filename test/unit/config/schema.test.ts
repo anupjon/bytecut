@@ -119,8 +119,17 @@ describe("config schema", () => {
       expect(errorOf(preset({ vmaf: 90, ssimulacra2: 80 }))).toMatch(
         /presets\.a\.vmaf: cannot be combined with `ssimulacra2`/,
       );
-      // A size cap holds a score, and vmaf is not what an image's cap is judged by.
-      expect(errorOf(preset({ vmaf: 90, maxSize: "10 KB", floor: 60 }))).toMatch(
+      // A size cap holds a score: vmaf serves a video's, and the floor must stay below it.
+      expect(() =>
+        parseConfig(preset({ vmaf: 90, maxSize: "10 MB", floor: 60 }), "c"),
+      ).not.toThrow();
+      expect(errorOf(preset({ vmaf: 90, maxSize: "10 MB" }))).toMatch(
+        /presets\.a\.floor: is required/,
+      );
+      expect(errorOf(preset({ vmaf: 90, maxSize: "10 MB", floor: 95 }))).toMatch(
+        /presets\.a\.floor: must not exceed `vmaf` \(90\)/,
+      );
+      expect(errorOf(preset({ maxSize: "10 MB", floor: 60 }))).toMatch(
         /presets\.a\.(maxSize|floor): needs `ssimulacra2`/,
       );
     });

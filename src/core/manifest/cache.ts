@@ -80,15 +80,34 @@ export async function checkCache(
 import type { PlannedMediaOutput, VideoPlanItem } from "../plan/types.js";
 import type { ManifestVideoOutput, ManifestVideoSource } from "./types.js";
 
-function sameVideoParams(planned: PlannedMediaOutput, r: ManifestVideoOutput): boolean {
-  if (planned.role !== r.role || planned.path !== r.path || planned.width !== r.width) return false;
+/**
+ * Recorded video outputs keyed by the path the plan lists: a width stepped down to fit a size
+ * cap lives at another path but is still the output the plan asked for.
+ */
+export function recordedVideoByPlannedPath(
+  entry: ManifestVideoSource,
+): Map<string, ManifestVideoOutput> {
+  return new Map(entry.outputs.map((o) => [o.search?.plannedPath ?? o.path, o]));
+}
+
+export function sameVideoParams(planned: PlannedMediaOutput, r: ManifestVideoOutput): boolean {
+  if (planned.role !== r.role) return false;
   if (planned.role === "video") {
     // A searched output is valid for the target it was searched for, wherever the CRF landed.
     const search = planned.search;
+    // Stepped down to fit a cap, the file is narrower than planned and named for its width.
+    if (r.search?.plannedPath !== undefined) {
+      if (r.search.plannedPath !== planned.path || r.width > planned.width) return false;
+    } else if (planned.path !== r.path || planned.width !== r.width) {
+      return false;
+    }
     const sameSearch =
       search === undefined
         ? r.search === undefined && r.crf === planned.crf
-        : r.search?.metric === search.metric && r.search.target === search.target;
+        : r.search?.metric === search.metric &&
+          r.search.target === search.target &&
+          r.search.floor === search.floor &&
+          r.search.maxBytes === search.maxBytes;
     return (
       sameSearch &&
       r.codec === planned.codec &&
@@ -98,6 +117,7 @@ function sameVideoParams(planned: PlannedMediaOutput, r: ManifestVideoOutput): b
       r.audio === planned.audio
     );
   }
+  if (planned.path !== r.path || planned.width !== r.width) return false;
   return r.quality === planned.quality && r.effort === planned.effort && r.at === planned.at;
 }
 
@@ -113,7 +133,7 @@ export async function checkVideoCache(
   if (entry.sha256 !== item.sourceSha256) return { kind: "miss", reason: "source-changed" };
   if (entry.preset !== item.preset) return { kind: "miss", reason: "outputs-differ" };
 
-  const recorded = new Map(entry.outputs.map((o) => [o.path, o]));
+  const recorded = recordedVideoByPlannedPath(entry);
   const wanted = item.outputs.filter((o) => !(o.role === "video" && unavailable.has(o.codec)));
   for (const planned of wanted) {
     const r = recorded.get(planned.path);
@@ -123,7 +143,7 @@ export async function checkVideoCache(
     const r = recorded.get(planned.path)!;
     if (r.status === "stale") return { kind: "miss", reason: "output-stale" };
     if (r.status !== "written") continue;
-    const actual = await hashOutput(planned.path);
+    const actual = await hashOutput(r.path);
     if (actual === null) return { kind: "miss", reason: "output-missing" };
     if (actual !== r.sha256) return { kind: "miss", reason: "output-modified" };
   }

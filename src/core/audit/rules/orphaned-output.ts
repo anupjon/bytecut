@@ -66,7 +66,7 @@ export const orphanedOutput: AuditRule<ProjectContext> = {
       if (!item || item.skip) continue;
       const wanted = new Set(item.outputs.map((o) => o.path));
       for (const out of entry.outputs) {
-        if (!wanted.has(out.path)) {
+        if (!wanted.has(out.path) && !wanted.has(out.search?.plannedPath ?? "")) {
           findings.push({
             ruleId: ID,
             severity: "info",

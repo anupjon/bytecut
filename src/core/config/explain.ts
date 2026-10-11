@@ -245,6 +245,11 @@ export function formatExplanation(e: Explanation): string {
       lines.push(
         `  search:   ${r.search.metric} >= ${r.search.target} on the worst of 3 sampled clips (crf above is the starting point)`,
       );
+      if (r.search.maxBytes !== undefined) {
+        lines.push(
+          `  size cap: at most ${formatBytes(r.search.maxBytes)} per file; quality may fall to ${r.search.metric} ${r.search.floor}, then the width steps down (never below half)`,
+        );
+      }
     }
   }
   if (e.outputs.length > 0) {

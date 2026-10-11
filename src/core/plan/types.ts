@@ -1,4 +1,5 @@
 import type { ImageFormat, QualitySearch } from "../presets/photo.js";
+import type { VideoSearch } from "../presets/video.js";
 import type { VideoCodec } from "../video/types.js";
 
 export interface PlannedOutput {
@@ -48,7 +49,7 @@ export interface PlannedVideoOutput {
   audio: "strip" | "keep";
   audioBitrate: string;
   /** Find the CRF by perceptual search; `crf` is then the starting point and the fallback. */
-  search?: { metric: "ssimulacra2" | "vmaf"; target: number };
+  search?: VideoSearch;
 }
 
 export interface PlannedPosterOutput {

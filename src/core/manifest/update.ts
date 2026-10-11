@@ -148,7 +148,13 @@ function mergeVideoItem(
   const merged = new Map(produced);
   for (const previous of old?.outputs ?? []) {
     if (merged.has(previous.path)) continue;
-    if (plannedPaths.has(previous.path) && !sameSource) {
+    const standsFor = previous.search?.plannedPath;
+    if (standsFor !== undefined && merged.has(standsFor)) {
+      // The planned width fits now, so the stepped-down file is a leftover orphan.
+      const { plannedPath: _superseded, ...search } = previous.search!;
+      void _superseded;
+      merged.set(previous.path, { ...previous, search });
+    } else if (plannedPaths.has(standsFor ?? previous.path) && !sameSource) {
       merged.set(previous.path, { ...previous, status: "stale" });
     } else {
       merged.set(previous.path, previous);

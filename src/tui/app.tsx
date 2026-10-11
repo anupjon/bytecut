@@ -36,6 +36,8 @@ export interface AppProps {
   loadDoctor: () => Promise<string>;
   /** Image presets `p` cycles through (built-ins plus the config's); defaults to the built-ins. */
   presetNames?: string[];
+  /** Video presets, for rows that are videos or animated GIFs. */
+  videoPresetNames?: string[];
   /** Puts text on the clipboard. Injectable so tests never touch the real one. */
   copy?: (text: string) => Promise<CopyResult>;
 }
@@ -45,7 +47,7 @@ export function App(props: AppProps): ReactNode {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [state, dispatch] = useReducer(reducer, props.outDir, (outDir: string) =>
-    initialState(outDir, props.presetNames),
+    initialState(outDir, props.presetNames, props.videoPresetNames),
   );
   const [doctor, setDoctor] = useState<string | null>(null);
 
@@ -262,14 +264,22 @@ export function App(props: AppProps): ReactNode {
           return;
         case "preset": {
           const name = parsed.args[0];
-          if (!name || !s.presetNames.includes(name)) {
+          const sources = targets.length > 0 ? targets : rowAt(s) ? [rowAt(s)!.source] : [];
+          const kinds = new Set(
+            sources.map((src) => s.model.rows.find((r) => r.source === src)?.kind ?? "image"),
+          );
+          // Offer the names that fit what is targeted: a video takes video presets only.
+          const valid = [
+            ...(kinds.has("image") || kinds.size === 0 ? s.presetNames : []),
+            ...(kinds.has("video") ? s.videoPresetNames : []),
+          ];
+          if (!name || !valid.includes(name)) {
             dispatch({
               type: "status",
-              message: `Usage: /preset <${s.presetNames.join("|")}> [@file…]`,
+              message: `Usage: /preset <${valid.join("|")}> [@file…]`,
             });
             return;
           }
-          const sources = targets.length > 0 ? targets : rowAt(s) ? [rowAt(s)!.source] : [];
           dispatch({ type: "cycle-preset", sources, to: name });
           return;
         }

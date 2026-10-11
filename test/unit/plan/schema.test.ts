@@ -144,12 +144,18 @@ describe("plan schema: video search", () => {
     }
   });
 
+  it("accepts a floor and a size cap on a video search", () => {
+    const search = { metric: "vmaf", target: 90, floor: 70, maxBytes: 5_000_000 };
+    expect(() => parsePlan(JSON.stringify(videoPlan(search)))).not.toThrow();
+  });
+
   it("rejects an unknown metric, an out-of-range target and stray keys", () => {
     for (const search of [
       { metric: "psnr", target: 40 },
       { metric: "vmaf", target: 0 },
       { metric: "vmaf", target: 101 },
-      { metric: "vmaf", target: 90, floor: 70 },
+      { metric: "vmaf", target: 90, extra: true },
+      { metric: "vmaf", target: 90, maxBytes: -1 },
     ]) {
       expect(() => parsePlan(JSON.stringify(videoPlan(search)))).toThrow();
     }

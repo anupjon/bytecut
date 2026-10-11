@@ -141,7 +141,8 @@ entries say what they `extends` (a built-in name without `extends` changes that 
 or `"250 KB"`. `raw` is rejected. On image presets `ssimulacra2` (lowest acceptable score), `maxSize` (cap per
 output) and `floor` (lowest score while fitting the cap; required with `maxSize`) turn on a perceptual
 quality search; on video presets `ssimulacra2` or `vmaf` (one per preset) search the CRF on sampled
-clips; `ssimulacra2Path` is an optional native scorer.
+clips, and `maxSize` / `floor` cap each output's size the same way (CRF up to the floor, then the width
+down, never below half); `ssimulacra2Path` is an optional native scorer.
 
 ### Presets
 Built-ins: `photo`, `hero`, `icon`, `svg`, `background-video`, `content-video`, `gif-to-video`.
@@ -175,7 +176,7 @@ height, bytes, sha256?, lossless, quality, effort, encoder, status` where `statu
 `already-optimal` (no file, no sha256) or `stale`. Keys are sorted and there are no timestamps, so an
 unchanged run leaves the file byte-identical. Sources and videos may also carry `priority` (an LCP candidate: snippets emit `fetchpriority="high"`
 and no lazy loading) and a `placeholder` (`dominant-color`, `lqip` or `blurhash`); video outputs carry
-`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive. Image outputs found by a perceptual search also carry `search` (target, floor, size cap, and `plannedPath` when the width was stepped down), `score` and `scorer`; video outputs carry `search` (`metric`, `target`), `score` and `scorer` (`wasm`, `native` or `libvmaf`).
+`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive. Image outputs found by a perceptual search also carry `search` (target, floor, size cap, and `plannedPath` when the width was stepped down), `score` and `scorer`; video outputs carry `search` (`metric`, `target`, and like images `floor`, `maxBytes`, `plannedPath`), `score` and `scorer` (`wasm`, `native` or `libvmaf`).
 `outputs` lists everything bytecut owns for that source,
 including orphans, which is what makes them deletable under §6.3.
 
@@ -486,3 +487,5 @@ Keep this list accurate as scripts change.
 - 2026-10-11 — Where the preset asks for `jpg` but the source has real transparency, or the preset is lossless, or a PNG's content is ambiguous, the output is a lossless PNG instead (confirmed with you) — keeps §6.9 (alpha) and §6.8 (ambiguous PNGs stay lossless); `icon` writes PNG.
 - 2026-10-11 — `ImageFormat` is now `jpg | png | webp | avif`, and manifests and plans accept all four — additive: an older manifest of avif/webp still reads.
 - 2026-10-11 — Outputs are written flat: `<outDir>/<source's own folders>/<basename>-<width>.<ext>`, with no folder per image (confirmed with you; videos and posters too) — supersedes the `<basename>/` folder of §4; two sources that would now share a name still abort planning with `OUTPUT_COLLISION`, and outputs of earlier runs become orphans.
+- 2026-10-11 — A video preset may set `maxSize` and `floor` (with `ssimulacra2` or `vmaf`); the cap is per output file, met by raising the CRF to the floor and then stepping the width down by 20% (not below half), and the finished file is measured (confirmed with you) — the same contract as images, with a bigger step because every candidate width costs a search and a full encode.
+- 2026-10-11 — In the TUI `p` and `/preset` offer the preset names that fit the row's kind (image or video) — an image preset on a video was never a valid choice.

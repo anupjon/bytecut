@@ -74,15 +74,26 @@ Everything is optional. Config is only needed to make a choice stick. Put it in
       "maxSize": "150 KB",
       "floor": 65
     },
-    "loop": { "extends": "background-video", "vmaf": 92 }
+    "loop": { "extends": "background-video", "vmaf": 92 },
+    "promo": {
+      "extends": "content-video",
+      "ssimulacra2": 70,
+      "floor": 55,
+      "maxSize": "5 MB"
+    }
   },
-  "assets": { "public/gallery/**": "gallery", "public/loops/*.mp4": "loop" },
+  "assets": {
+    "public/gallery/**": "gallery",
+    "public/loops/*.mp4": "loop",
+    "public/promo.mp4": "promo"
+  },
   "budgets": { "maxFileSize": "250 KB", "maxTotalSize": "5 MB" }
 }
 ```
 
 - **Presets**: built-in `photo`, `hero`, `icon`, `background-video`, `content-video` and
-  `gif-to-video`. Add your own with `extends`; the first matching `assets` glob wins.
+  `gif-to-video`. Add your own with `extends`; the first matching `assets` glob wins. In the
+  TUI, `p` and `/preset` offer image presets for images and video presets for videos and GIFs.
 - **Size**: `maxEdge` caps the longest side; `widths` lists widths instead (a responsive set).
 - **Formats**: `jpg` (default), `png`, `webp`, `avif`. A `<picture>` lists AVIF, then WebP, and
   the JPEG is the `<img>`.
@@ -98,7 +109,10 @@ that still meets it:
   confirms on the full-size output.
 - `maxSize` with a required `floor` lowers quality, then steps the width down, to fit a size
   cap. A constraint that cannot be met writes nothing and fails the run; it is never silently
-  exceeded.
+  exceeded. On video the cap is per output file (AV1 and H.264 each): the CRF is raised until
+  the predicted size fits, never past the `floor`, and then the width steps down by a fifth at a
+  time, never below half. The finished file is measured, not just predicted. A narrower file is
+  named for its real width, e.g. `promo-1228.h264.mp4`.
 - `vmaf: 92` (video) uses ffmpeg's `libvmaf`. Without it, the preset's fixed quality is used
   and a warning says so.
 

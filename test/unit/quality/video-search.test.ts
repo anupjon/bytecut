@@ -6,7 +6,9 @@ import {
   clipsFor,
   createVideoSearcher,
   findCrf,
+  fitCrfToSize,
   scoreGeometry,
+  stepWidth,
 } from "../../../src/core/quality/video-search.js";
 import type { QualityScorer, RgbImage } from "../../../src/core/quality/types.js";
 import { fakeVideoEngine, greyFrames, probeOf } from "../../video-helpers.js";
@@ -235,5 +237,61 @@ describe("video searcher", () => {
   it("covers both codecs' CRF ranges", () => {
     expect(CRF_RANGE.av1.hi).toBe(63);
     expect(CRF_RANGE.h264.hi).toBe(51);
+  });
+});
+
+describe("fitting a size cap", () => {
+  const sizes = (bytesAt: (crf: number) => number) => {
+    const asked: number[] = [];
+    return {
+      asked,
+      sizeAt: async (crf: number) => {
+        asked.push(crf);
+        return bytesAt(crf);
+      },
+    };
+  };
+  const linear = (crf: number) => (100 - crf) * 100;
+
+  it("keeps the quality CRF when it already fits, measuring nothing else", async () => {
+    const s = sizes(linear);
+    const out = await fitCrfToSize({ lo: 40, hi: 63, maxBytes: 7000, sizeAt: s.sizeAt });
+    expect(out).toEqual({ ok: true, crf: 40, bytes: 6000 });
+    expect(s.asked).toEqual([40]);
+  });
+
+  it("finds the lowest CRF that fits, by bisection", async () => {
+    const s = sizes(linear);
+    const out = await fitCrfToSize({ lo: 40, hi: 63, maxBytes: 4000, sizeAt: s.sizeAt });
+    expect(out).toEqual({ ok: true, crf: 60, bytes: 4000 });
+    expect(s.asked.length).toBeLessThanOrEqual(8);
+    // One CRF lower would not fit.
+    expect(linear(59)).toBeGreaterThan(4000);
+  });
+
+  it("reports the best size reached when nothing fits", async () => {
+    const out = await fitCrfToSize({
+      lo: 40,
+      hi: 51,
+      maxBytes: 100,
+      sizeAt: async (c) => linear(c),
+    });
+    expect(out).toEqual({ ok: false, crf: 51, bytes: 4900 });
+  });
+});
+
+describe("stepping the width down", () => {
+  it("narrows by a fifth, stays even and stops before half", () => {
+    const widths = [1920];
+    for (let next = stepWidth(1920, 1920); next !== null; next = stepWidth(1920, next)) {
+      widths.push(next);
+    }
+    expect(widths).toEqual([1920, 1536, 1228, 982]);
+    expect(widths.every((w) => w % 2 === 0)).toBe(true);
+    expect(Math.min(...widths)).toBeGreaterThanOrEqual(960);
+  });
+
+  it("has nowhere to go for a tiny video", () => {
+    expect(stepWidth(2, 2)).toBeNull();
   });
 });

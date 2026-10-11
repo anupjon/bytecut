@@ -67,7 +67,13 @@ const videoOutputSchema = z
     encoder: z.string(),
     status: z.enum(["written", "already-optimal", "stale"]),
     search: z
-      .object({ metric: z.enum(["ssimulacra2", "vmaf"]), target: z.number() })
+      .object({
+        metric: z.enum(["ssimulacra2", "vmaf"]),
+        target: z.number(),
+        floor: z.number().optional(),
+        maxBytes: z.number().int().optional(),
+        plannedPath: z.string().optional(),
+      })
       .strict()
       .optional(),
     score: z.number().optional(),

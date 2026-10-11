@@ -53,6 +53,7 @@ export async function runTui(options: RunTuiOptions): Promise<void> {
       inputs={options.inputs}
       outDir={options.outDir}
       presetNames={options.config ? Object.keys(options.config.catalog.image) : undefined}
+      videoPresetNames={options.config ? Object.keys(options.config.catalog.video) : undefined}
       loadDoctor={options.loadDoctor}
     />,
     { exitOnCtrlC: false },

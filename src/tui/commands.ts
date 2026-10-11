@@ -13,7 +13,7 @@ export const COMMANDS: CommandInfo[] = [
   },
   {
     name: "preset",
-    usage: "/preset <photo|hero|icon> [@file…]",
+    usage: "/preset <preset> [@file…]",
     description: "Set the preset for the highlighted (or mentioned) files",
   },
   {

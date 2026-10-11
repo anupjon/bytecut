@@ -159,6 +159,40 @@ suite("video quality search with real ffmpeg and the built-in scorer", () => {
     expect(await readFile(path, "utf8")).toBe(first);
   }, 240_000);
 
+  it("fits a size cap: a real file no larger than the cap, still above the floor", async () => {
+    const free = await project({ ssimulacra2: 70 });
+    expect((await cli(free, ["optimize", "-y"])).code).toBe(0);
+    const uncapped = await h264Of(free);
+
+    // 60% of what the target alone costs: reachable only by spending quality or pixels.
+    const cap = Math.round(uncapped.bytes * 0.6);
+    const root = await project({ ssimulacra2: 70, floor: 30, maxSize: cap });
+    const before = await hashAll(join(root, "public/media"), ["long.mp4"]);
+    const r = await cli(root, ["optimize", "-y"]);
+    expect(r.code, r.stderr).toBe(0);
+
+    const out = await h264Of(root);
+    expect(out.status).toBe("written");
+    expect(out.bytes).toBeLessThanOrEqual(cap);
+    expect((await stat(join(root, "public/_bytecut", out.path))).size).toBe(out.bytes);
+    expect(out.score!).toBeGreaterThanOrEqual(30);
+    expect(out.search).toMatchObject({ target: 70, floor: 30, maxBytes: cap });
+    // Cheaper than the target's own CRF, by a higher CRF or by a narrower picture.
+    expect(out.crf! > uncapped.crf! || out.width < uncapped.width).toBe(true);
+    if (out.search?.plannedPath) {
+      expect(out.path).toBe(`media/long-${out.width}.h264.mp4`);
+      expect(out.width).toBeLessThan(320);
+      expect(out.width).toBeGreaterThanOrEqual(160);
+    }
+    expect(await hashAll(join(root, "public/media"), ["long.mp4"])).toEqual(before);
+
+    // The second run recognises the (possibly narrower) output as the one the plan asks for.
+    const path = join(root, "public/_bytecut/bytecut-manifest.json");
+    const first = await readFile(path, "utf8");
+    expect((await cli(root, ["optimize", "-y"])).code).toBe(0);
+    expect(await readFile(path, "utf8")).toBe(first);
+  }, 300_000);
+
   it("exits 1 and writes no video when the target is out of reach", async () => {
     const root = await project({ ssimulacra2: 100 });
     const r = await cli(root, ["optimize", "-y"]);

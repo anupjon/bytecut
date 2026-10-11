@@ -83,7 +83,13 @@ export interface VideoOutputResult {
   codecs?: string;
   encoder?: string;
   /** Present when the CRF came from a perceptual search. */
-  search?: { metric: "ssimulacra2" | "vmaf"; target: number };
+  search?: {
+    metric: "ssimulacra2" | "vmaf";
+    target: number;
+    floor?: number;
+    maxBytes?: number;
+    plannedPath?: string;
+  };
   score?: number;
   scorer?: "wasm" | "native" | "libvmaf";
   status: OutputStatus;

@@ -6,6 +6,8 @@ const FIX_BY_RULE = new Map(ALL_RULES.map((r) => [r.id, r.fix]));
 
 export interface Row {
   source: string;
+  /** Decides which presets `p` offers: videos and animated GIFs have their own. */
+  kind: "image" | "video";
   bytes: number;
   width: number;
   height: number;
@@ -61,6 +63,7 @@ export function buildModel(report: AuditReport): Model {
     );
     rows.push({
       source,
+      kind: file.kind ?? "image",
       bytes: file.bytes,
       width: file.width,
       height: file.height,

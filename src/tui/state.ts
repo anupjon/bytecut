@@ -10,6 +10,7 @@ export type Overlay =
   null | "help" | "details" | "outdir" | "command" | "doctor" | "snippet" | "save";
 
 export const PRESET_CYCLE = ["photo", "hero", "icon"] as const;
+export const VIDEO_PRESET_CYCLE = ["background-video", "content-video", "gif-to-video"] as const;
 
 export interface ReviewItem {
   source: string;
@@ -64,6 +65,8 @@ export interface State {
   view: View;
   /** Names `p` cycles through and `/preset` accepts: the config's image presets. */
   presetNames: string[];
+  /** The same for video rows: the config's video presets. */
+  videoPresetNames: string[];
   /** What the config already says, so only new choices are offered for saving. */
   baseline: { presets: Record<string, string>; outDir: string };
   save: SaveView | null;
@@ -102,10 +105,15 @@ export interface State {
 
 export const EMPTY_MODEL: Model = { rows: [], reportOnly: [], covered: 0, skipped: [], notes: [] };
 
-export function initialState(outDir: string, presetNames: readonly string[] = PRESET_CYCLE): State {
+export function initialState(
+  outDir: string,
+  presetNames: readonly string[] = PRESET_CYCLE,
+  videoPresetNames: readonly string[] = VIDEO_PRESET_CYCLE,
+): State {
   return {
     view: "scanning",
     presetNames: [...presetNames],
+    videoPresetNames: [...videoPresetNames],
     baseline: { presets: {}, outDir },
     save: null,
     snippet: null,
@@ -278,7 +286,9 @@ export function reducer(state: State, action: Action): State {
         const row = state.model.rows.find((r) => r.source === source);
         if (!row) continue;
         const current = presets[source] ?? row.preset;
-        const names = state.presetNames;
+        const names = row.kind === "video" ? state.videoPresetNames : state.presetNames;
+        // An image preset named for a video (or the reverse) is not a choice that exists.
+        if (action.to !== undefined && !names.includes(action.to)) continue;
         const next = action.to ?? names[(names.indexOf(current) + 1) % names.length]!;
         if (next === row.preset) delete presets[source];
         else presets[source] = next;

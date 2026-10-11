@@ -120,9 +120,12 @@ export async function estimateVideo(
       streamBytes = Math.round(seconds > 0 ? (total / seconds) * item.durationSec : total);
       deps.cache.setEstimate(key, { bytes: streamBytes, basis: exact ? "exact" : "extrapolated" });
     }
+    const total = streamBytes + audioBytes(out, item);
     perCodec.push({
       codec: out.codec,
-      bytes: streamBytes + audioBytes(out, item),
+      // A size cap is met by raising the CRF or narrowing the width, or the output is not
+      // written at all, so what a run will produce never exceeds it.
+      bytes: out.search?.maxBytes !== undefined ? Math.min(total, out.search.maxBytes) : total,
       basis: exact ? "exact" : "extrapolated",
     });
   }

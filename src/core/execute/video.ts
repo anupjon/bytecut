@@ -20,9 +20,12 @@ import {
   CRF_RANGE,
   MAX_CONFIRM_BUMPS,
   createVideoSearcher,
+  fitCrfToSize,
   scoreGeometry,
+  stepWidth,
   type VideoSearcher,
 } from "../quality/video-search.js";
+import { formatBytes } from "../units.js";
 import type { QualityScorer } from "../quality/types.js";
 import type { OutputStatus, VideoItemResult, VideoOutputResult } from "./run.js";
 
@@ -81,13 +84,19 @@ const evenHeight = (probe: VideoProbe, width: number) =>
   Math.max(2, Math.round((probe.height * width) / Math.max(1, probe.width) / 2) * 2);
 
 function sameParams(planned: PlannedMediaOutput, r: ManifestVideoOutput): boolean {
-  if (planned.role !== r.role || planned.width !== r.width) return false;
+  if (planned.role !== r.role) return false;
+  // A width stepped down to fit a size cap is narrower than planned by design.
+  const stepped = r.search?.plannedPath !== undefined;
+  if (stepped ? r.width > planned.width : planned.width !== r.width) return false;
   if (planned.role === "video") {
     const search = planned.search;
     const sameSearch =
       search === undefined
         ? r.search === undefined && r.crf === planned.crf
-        : r.search?.metric === search.metric && r.search.target === search.target;
+        : r.search?.metric === search.metric &&
+          r.search.target === search.target &&
+          r.search.floor === search.floor &&
+          r.search.maxBytes === search.maxBytes;
     return (
       sameSearch &&
       r.codec === planned.codec &&
@@ -152,7 +161,8 @@ export async function runVideoItem(
   }
 
   const entry = ctx.manifest?.videos[item.source];
-  const recorded = new Map((entry?.outputs ?? []).map((o) => [o.path, o]));
+  // Keyed by the path the plan lists: a width stepped down to fit a size cap lives elsewhere.
+  const recorded = new Map((entry?.outputs ?? []).map((o) => [o.search?.plannedPath ?? o.path, o]));
   const sameSource = entry?.sha256 === item.sourceSha256;
 
   const probe = probeFromItem(item);
@@ -173,7 +183,9 @@ export async function runVideoItem(
     metric === "vmaf" ? caps.libvmaf : ctx.quality !== undefined;
   const retrySearch = new Set<string>();
   for (const r of entry?.outputs ?? []) {
-    if (r.search && r.score === undefined && searchable(r.search.metric)) retrySearch.add(r.path);
+    if (r.search && r.score === undefined && searchable(r.search.metric)) {
+      retrySearch.add(r.search.plannedPath ?? r.path);
+    }
   }
 
   // Fast path: everything that can exist already does, with matching hashes.
@@ -213,7 +225,7 @@ export async function runVideoItem(
       !retrySearch.has(planned.path) &&
       sameParams(planned, prior)
     ) {
-      const actual = await hashOutput(planned.path);
+      const actual = await hashOutput(prior.path);
       if (actual !== null && actual === prior.sha256) {
         record(fromRecorded(prior));
         continue;
@@ -343,11 +355,16 @@ type Searched =
   | {
       kind: "found";
       crf: number;
+      /** The CRF that met the quality target, before fitting a size cap raised it. */
+      qualityCrf: number;
       score: number;
       scorer: "wasm" | "native" | "libvmaf";
       searcher: VideoSearcher;
     }
-  | { kind: "unmet"; reason: string };
+  /** The quality target cannot be met at any CRF. */
+  | { kind: "unmet"; reason: string }
+  /** The size cap cannot be met at this width above the quality floor. */
+  | { kind: "too-big"; reason: string };
 
 /** Share of a video output's progress bar that the CRF search takes. */
 const SEARCH_SHARE = 0.4;
@@ -361,6 +378,7 @@ async function searchCrf(
   encoder: EncoderName,
   hasLibvmaf: boolean,
   ctx: VideoRunContext,
+  maxWidth: number | null,
 ): Promise<Searched> {
   const search = planned.search;
   if (!search) return { kind: "fixed", skipped: false };
@@ -380,7 +398,7 @@ async function searchCrf(
       return skip(`the quality scorer could not start (${message(error)})`);
     }
   }
-  const { width, height } = scoreGeometry(probe, planned.maxWidth);
+  const { width, height } = scoreGeometry(probe, maxWidth);
   if (search.metric === "ssimulacra2" && (width < 8 || height < 8)) {
     return skip("the video is too small to score");
   }
@@ -395,7 +413,7 @@ async function searchCrf(
     codec: planned.codec,
     encoder,
     speed: planned.speed,
-    maxWidth: planned.maxWidth,
+    maxWidth,
     maxFps: planned.maxFps,
     startCrf: planned.crf,
     signal: ctx.signal,
@@ -416,14 +434,52 @@ async function searchCrf(
       reason: `${search.metric} reached only ${outcome.bestScore.toFixed(1)} at crf ${CRF_RANGE[planned.codec].lo}, below the target ${search.target}`,
     };
   }
-  return {
-    kind: "found",
+  const found = {
+    kind: "found" as const,
     crf: outcome.crf,
+    qualityCrf: outcome.crf,
     score: outcome.score,
-    scorer: search.metric === "vmaf" ? "libvmaf" : scorer!.kind,
+    scorer: search.metric === "vmaf" ? ("libvmaf" as const) : scorer!.kind,
     searcher,
   };
+  if (search.maxBytes === undefined) return found;
+
+  // Fit the cap: the lowest CRF above the quality one whose predicted size fits, kept only if
+  // it still scores at or above the floor.
+  const cap = search.maxBytes;
+  const audioBytes =
+    planned.audio === "keep" && probe.hasAudio
+      ? Math.round(((Number.parseInt(planned.audioBitrate, 10) * 1000) / 8) * probe.durationSec)
+      : 0;
+  const range = CRF_RANGE[planned.codec];
+  const fit = await fitCrfToSize({
+    lo: outcome.crf,
+    hi: range.hi,
+    maxBytes: Math.max(0, cap - audioBytes),
+    sizeAt: (crf) => searcher.sizeAt(crf),
+  });
+  if (!fit.ok) {
+    return {
+      kind: "too-big",
+      reason: `about ${formatBytes(fit.bytes + audioBytes)} at crf ${fit.crf}, over the ${formatBytes(cap)} cap`,
+    };
+  }
+  if (fit.crf === outcome.crf) return found;
+  const floor = search.floor ?? search.target;
+  const score = await searcher.score(fit.crf);
+  if (score < floor) {
+    return {
+      kind: "too-big",
+      reason: `fitting ${formatBytes(cap)} needs crf ${fit.crf}, which scores ${score.toFixed(1)}, below the floor ${floor}`,
+    };
+  }
+  return { ...found, crf: fit.crf, score };
 }
+
+type VideoAttempt =
+  | { kind: "done"; output: VideoOutputResult; wrote: boolean }
+  /** This width cannot hold the size cap above the quality floor: try a narrower one. */
+  | { kind: "too-big"; reason: string };
 
 async function makeVideo(
   planned: PlannedVideoOutput,
@@ -435,27 +491,101 @@ async function makeVideo(
   ctx: VideoRunContext,
   encoderLabel: (name: string) => string,
 ): Promise<{ output: VideoOutputResult; wrote: boolean }> {
-  const searched = await searchCrf(planned, item, sourcePath, probe, encoder, hasLibvmaf, ctx);
-  if (searched.kind === "unmet") {
-    ctx.warnings.add(`${planned.path}: ${searched.reason}; nothing was written`);
+  const unmet = (reason: string) => {
+    ctx.warnings.add(`${planned.path}: ${reason}; nothing was written`);
     return {
-      output: {
-        ...blank(planned, "unmet"),
-        codec: planned.codec,
-        error: searched.reason,
-      },
+      output: { ...blank(planned, "unmet"), codec: planned.codec, error: reason },
+      wrote: false,
+    };
+  };
+
+  // Without a size cap there is exactly one width: the planned one.
+  let width = planned.width;
+  let maxWidth = planned.maxWidth;
+  const tried: string[] = [];
+  for (;;) {
+    const attempt = await attemptWidth(
+      planned,
+      item,
+      sourcePath,
+      probe,
+      encoder,
+      hasLibvmaf,
+      ctx,
+      encoderLabel,
+      width,
+      maxWidth,
+    );
+    if (attempt.kind === "done") return attempt;
+    tried.push(`${width}px: ${attempt.reason}`);
+    const next = stepWidth(planned.width, width);
+    if (next === null) {
+      const half = Math.ceil(planned.width / 2);
+      return unmet(
+        `the size cap could not be met at ${width}px, the narrowest allowed (half of ${planned.width}px is ${half}px): ${tried.join("; ")}`,
+      );
+    }
+    width = next;
+    maxWidth = next;
+  }
+}
+
+async function attemptWidth(
+  planned: PlannedVideoOutput,
+  item: VideoPlanItem,
+  sourcePath: string,
+  probe: VideoProbe,
+  encoder: EncoderName,
+  hasLibvmaf: boolean,
+  ctx: VideoRunContext,
+  encoderLabel: (name: string) => string,
+  width: number,
+  maxWidth: number | null,
+): Promise<VideoAttempt> {
+  const stepped = width !== planned.width;
+  // The file is named for what it is; the manifest remembers what it stands in for.
+  const path = stepped
+    ? planned.path.replace(
+        new RegExp(`-${planned.width}\\.${planned.codec}\\.mp4$`),
+        `-${width}.${planned.codec}.mp4`,
+      )
+    : planned.path;
+
+  const searched = await searchCrf(
+    planned,
+    item,
+    sourcePath,
+    probe,
+    encoder,
+    hasLibvmaf,
+    ctx,
+    maxWidth,
+  );
+  if (searched.kind === "unmet") {
+    ctx.warnings.add(`${path}: ${searched.reason}; nothing was written`);
+    return {
+      kind: "done",
+      output: { ...blank(planned, "unmet"), codec: planned.codec, error: searched.reason },
       wrote: false,
     };
   }
+  if (searched.kind === "too-big") return { kind: "too-big", reason: searched.reason };
+
   const found = searched.kind === "found" ? searched : null;
+  const search = planned.search;
+  const cap = search?.maxBytes;
   const range = CRF_RANGE[planned.codec];
   let crf = found ? found.crf : planned.crf;
   let score = found?.score;
   const base = found ? SEARCH_SHARE : 0;
+  // Without the search there is nothing to hold a cap to: the fixed CRF is what was asked for.
+  const capped = found !== null && cap !== undefined;
+  const triedCrfs = new Set<number>();
 
-  const temp = await ctx.fs.reserveTemp(planned.path);
+  const temp = await ctx.fs.reserveTemp(path);
   try {
     for (let bumps = 0; ; bumps++) {
+      triedCrfs.add(crf);
       await ctx.engine.encode(
         {
           source: sourcePath,
@@ -463,7 +593,7 @@ async function makeVideo(
           encoder,
           crf,
           speed: planned.speed,
-          maxWidth: planned.maxWidth,
+          maxWidth,
           maxFps: planned.maxFps,
           audio: planned.audio,
           audioBitrate: planned.audioBitrate,
@@ -472,24 +602,46 @@ async function makeVideo(
         (fraction) => ctx.onProgress?.(item.source, planned.path, base + (1 - base) * fraction),
         ctx.signal ?? new AbortController().signal,
       );
+      const { size: encodedBytes } = await stat(temp);
+
+      // A prediction from sampled clips can be off for the whole length: the real file decides.
+      if (capped && encodedBytes > cap) {
+        const nextCrf = crf + CONFIRM_STEP;
+        if (bumps >= MAX_CONFIRM_BUMPS || nextCrf > range.hi || triedCrfs.has(nextCrf)) {
+          await ctx.fs.discardTemp(temp);
+          return {
+            kind: "too-big",
+            reason: `${formatBytes(encodedBytes)} on the full encode at crf ${crf}, over the ${formatBytes(cap)} cap`,
+          };
+        }
+        crf = nextCrf;
+        continue;
+      }
+
       // A whole-video search measured exactly this encode; a sampled one is checked on the
       // real output, because rate control over the full length can differ from a clip's.
       if (!found || found.searcher.whole) break;
       const measured = await found.searcher.confirm(temp, crf);
-      if (measured >= planned.search!.target) {
+      // A CRF raised only to fit the cap is held to the floor, not to the target.
+      const required =
+        capped && crf > found.qualityCrf ? (search!.floor ?? search!.target) : search!.target;
+      if (measured >= required) {
         score = measured;
         break;
       }
-      if (bumps >= MAX_CONFIRM_BUMPS || crf - CONFIRM_STEP < range.lo) {
+      const lower = crf - CONFIRM_STEP;
+      if (bumps >= MAX_CONFIRM_BUMPS || lower < range.lo || triedCrfs.has(lower)) {
         await ctx.fs.discardTemp(temp);
-        const reason = `${planned.search!.metric} was ${measured.toFixed(1)} on the full encode at crf ${crf}, below the target ${planned.search!.target}`;
-        ctx.warnings.add(`${planned.path}: ${reason}; nothing was written`);
+        const reason = `${search!.metric} was ${measured.toFixed(1)} on the full encode at crf ${crf}, below ${capped && crf > found.qualityCrf ? "the floor" : "the target"} ${required}`;
+        if (capped) return { kind: "too-big", reason };
+        ctx.warnings.add(`${path}: ${reason}; nothing was written`);
         return {
+          kind: "done",
           output: { ...blank(planned, "unmet"), codec: planned.codec, error: reason },
           wrote: false,
         };
       }
-      crf -= CONFIRM_STEP;
+      crf = lower;
     }
 
     const { size } = await stat(temp);
@@ -502,23 +654,26 @@ async function makeVideo(
       : undefined;
     const fps = planned.maxFps !== null ? Math.min(probe.fps, planned.maxFps) : probe.fps;
     const result: VideoOutputResult = {
-      path: planned.path,
+      path,
       role: "video",
       format: "mp4",
       codec: planned.codec,
-      width: planned.width,
-      height: evenHeight(probe, planned.width),
+      width,
+      height: evenHeight(probe, width),
       fps: Math.round(fps * 100) / 100,
       bytes: size,
       crf,
       speed: planned.speed,
+      // The plan's own values: they are what the cache compares, whatever width was reached.
       maxWidth: planned.maxWidth,
       maxFps: planned.maxFps,
       audio: planned.audio,
       ...(codecs ? { codecs } : {}),
       // Recorded even when the search could not run, so the cache recognises the output; a
       // missing score is what marks it as worth searching once the metric is available.
-      ...(planned.search ? { search: planned.search } : {}),
+      ...(search
+        ? { search: { ...search, ...(stepped ? { plannedPath: planned.path } : {}) } }
+        : {}),
       ...(score !== undefined && found
         ? { score: Math.round(score * 100) / 100, scorer: found.scorer }
         : {}),
@@ -529,17 +684,21 @@ async function makeVideo(
     // §6.7: never emit a file larger than the best existing equivalent.
     if (size >= item.sourceBytes) {
       await ctx.fs.discardTemp(temp);
-      return { output: { ...result, status: "already-optimal" }, wrote: true };
+      return { kind: "done", output: { ...result, status: "already-optimal" }, wrote: true };
     }
 
     const digest = await sha256File(temp);
-    const verdict = await existingPolicy(planned.path, digest, ctx);
+    const verdict = await existingPolicy(path, digest, ctx);
     if (verdict) {
       await ctx.fs.discardTemp(temp);
-      return { output: { ...result, sha256: digest, status: verdict }, wrote: false };
+      return {
+        kind: "done",
+        output: { ...result, sha256: digest, status: verdict },
+        wrote: false,
+      };
     }
-    await ctx.fs.commitTemp(temp, planned.path);
-    return { output: { ...result, sha256: digest }, wrote: true };
+    await ctx.fs.commitTemp(temp, path);
+    return { kind: "done", output: { ...result, sha256: digest }, wrote: true };
   } catch (error) {
     await ctx.fs.discardTemp(temp);
     throw error;

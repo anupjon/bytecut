@@ -30,6 +30,7 @@ export const project: ProjectInfo = {
 export function row(source: string, over: Partial<Row> = {}): Row {
   return {
     source,
+    kind: "image",
     bytes: 100_000,
     width: 2000,
     height: 1000,
