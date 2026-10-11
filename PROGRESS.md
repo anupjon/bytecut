@@ -372,6 +372,22 @@ go/no-go gate and it passed.
   images, synced side-by-side players for video, and the sizes, CRF/quality, metric and score.
   `Ctrl-C` stops it (SIGINT exit 0 verified); the TUI stops its servers on quit.
 
+## Slow video scans no longer look stuck (fix after M9)
+
+- **Report**: in a folder with only a video, `npx bytecut` sat on `Scanning 0/1 images (estimate)…`.
+  Nothing was hung: the audit estimates a video with real sample encodes (3 windows x 2 codecs at the
+  real preset), which took ~30 s on a fast machine for a 4K, 20 s clip and more on a laptop, and the
+  progress counted whole files, so one video showed no movement. It also called a video an "image".
+- **Fix**: the estimate reports each sample encode; the scanning screen now reads
+  `Scanning 0/1 files (estimate)` plus `big.mp4: encoding sample 2 of 6. Large videos take a while; the
+result is cached.` Checked in a real pty on a 4K clip. The estimate is cached by content hash, so the
+  second scan is quick.
+- **Not changed**: the estimate still costs real encodes (a confirmed decision). A faster estimate
+  (downscaled samples) would trade accuracy; say if you want that.
+- Tests: step reporting in the estimator, the reducer, the scanning screen, and a real-ffmpeg audit;
+  the TUI video test now waits for the list row because the scanning screen names the file. The hook
+  timeout is 120 s, since fixture generation in `beforeAll` could exceed 30 s under a full parallel run.
+
 ## Flat output layout (change after M9)
 
 - Outputs are written as `<outDir>/<source's own folders>/<basename>-<width>.<ext>`: the extra

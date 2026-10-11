@@ -503,13 +503,20 @@ export function App(props: AppProps): ReactNode {
   if (state.view === "scanning") {
     const sc = state.scan;
     body = (
-      <Text>
-        Scanning
-        {sc && sc.total > 0
-          ? ` ${Math.min(sc.done, sc.total)}/${sc.total} images (${sc.phase})`
-          : ""}
-        …
-      </Text>
+      <Box flexDirection="column">
+        <Text>
+          Scanning
+          {sc && sc.total > 0
+            ? ` ${Math.min(sc.done, sc.total)}/${sc.total} files (${sc.phase})`
+            : ""}
+          …
+        </Text>
+        {sc?.source && sc.detail ? (
+          <Text dimColor>
+            {sc.source}: {sc.detail}. Large videos take a while; the result is cached.
+          </Text>
+        ) : null}
+      </Box>
     );
   } else if (state.view === "error") {
     body = <Text color="red">{state.error}</Text>;

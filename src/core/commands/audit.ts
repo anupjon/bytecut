@@ -67,7 +67,14 @@ export interface AuditOptions {
   /** Globs of sources whose findings are dropped (config `audit.ignore`). */
   ignore?: string[];
   /** Coarse progress for a UI; `total` is the number of raster files. */
-  onProgress?(event: { phase: AuditPhase; done: number; total: number }): void;
+  onProgress?(event: {
+    phase: AuditPhase;
+    done: number;
+    total: number;
+    /** The file being worked on, and what is happening to it, for slow steps (video samples). */
+    source?: string;
+    detail?: string;
+  }): void;
 }
 
 /** One scanned raster file, as the TUI lists it. */
@@ -307,6 +314,14 @@ export async function audit(options: AuditOptions): Promise<AuditReport> {
               engine: options.videoEngine,
               cache,
               ffmpegVersion: videoVersions.ffmpeg ?? "unknown",
+              onStep: (step) =>
+                options.onProgress?.({
+                  phase: "estimate",
+                  done: probed - 1,
+                  total,
+                  source: item.source,
+                  detail: `encoding sample ${step.done} of ${step.total}`,
+                }),
             },
             absolute,
           );

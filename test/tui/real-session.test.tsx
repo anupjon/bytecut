@@ -247,7 +247,8 @@ describe.skipIf(!FFMPEG)("TUI with a real video", () => {
     });
 
     current = mount(session, (props) => <App3 {...props} />);
-    await current.waitFor((f) => f.includes("heavy.mp4"), "the video row", 60_000);
+    // The scanning screen names the file it is working on, so wait for the list row itself.
+    await current.waitFor((f) => /\[x\] .*heavy\.mp4/.test(f), "the video row", 60_000);
     expect(current.frame()).toMatch(/\[x\] .*heavy\.mp4/);
     expect(current.frame()).toContain("content-video");
 

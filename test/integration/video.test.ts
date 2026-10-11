@@ -449,6 +449,27 @@ process.exit(r.status ?? 1);
     expect(m.videos).toEqual({});
   });
 
+  it("an audit of a lone video reports which sample it is encoding", async () => {
+    const root = await project(["long.mp4"]);
+    const events: Array<{ phase: string; source?: string; detail?: string }> = [];
+    await audit({
+      projectRoot: root,
+      engine: sharpImageEngine,
+      svgEngine: svgoEngine,
+      inputs: ["public"],
+      outDir: OUT,
+      staticRoot: "public",
+      ffmpeg: { found: true, installHint: "" },
+      videoEngine: realEngine(),
+      persistCache: false,
+      onProgress: (e) => events.push(e),
+    });
+    const steps = events.filter((e) => e.detail);
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.every((e) => e.phase === "estimate" && e.source?.endsWith("long.mp4"))).toBe(true);
+    expect(steps[0]!.detail).toMatch(/^encoding sample 1 of \d+$/);
+  });
+
   it("no ffmpeg in audit: listed with the install command, never skipped silently", async () => {
     const root = await project(["heavy.mp4", "loop.gif"]);
     const report = await audit({

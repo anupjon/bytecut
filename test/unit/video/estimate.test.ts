@@ -99,6 +99,14 @@ describe("estimateVideo", () => {
     });
   });
 
+  it("reports each sample encode, so a slow estimate can show that it is working", async () => {
+    const { engine } = fakeVideoEngine({ sampleBytes: () => 10_000 });
+    const steps: Array<{ done: number; total: number }> = [];
+    await estimateVideo(item(), { ...deps(engine), onStep: (s) => steps.push(s) }, "/p/a.mp4");
+    // Two codecs, three sampled windows each.
+    expect(steps).toEqual([1, 2, 3, 4, 5, 6].map((done) => ({ done, total: 6 })));
+  });
+
   it("is exact for a short clip and encodes it once", async () => {
     const { engine, calls } = fakeVideoEngine({ sampleBytes: () => 40_000 });
     const est = await estimateVideo(

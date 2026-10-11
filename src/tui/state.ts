@@ -74,7 +74,13 @@ export interface State {
   /** Bumped to request a (re)scan; the app runs the audit whenever it changes. */
   scanId: number;
   overlay: Overlay;
-  scan: { phase: AuditPhase; done: number; total: number } | null;
+  scan: {
+    phase: AuditPhase;
+    done: number;
+    total: number;
+    source?: string;
+    detail?: string;
+  } | null;
   model: Model;
   /** Source paths of every file in the project the `@` picker can offer. */
   files: string[];
@@ -140,7 +146,14 @@ export function unsavedChoices(state: State): Choices {
 export type Action =
   | { type: "save-open"; choices: Choices }
   | { type: "save-result"; outcome: SaveOutcome }
-  | { type: "scan-progress"; phase: AuditPhase; done: number; total: number }
+  | {
+      type: "scan-progress";
+      phase: AuditPhase;
+      done: number;
+      total: number;
+      source?: string;
+      detail?: string;
+    }
   | { type: "scan-done"; model: Model; files: string[] }
   | { type: "fatal"; error: string }
   | { type: "move"; delta: number }
@@ -183,7 +196,16 @@ export function effectivePreset(state: State, row: Row): string {
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "scan-progress":
-      return { ...state, scan: { phase: action.phase, done: action.done, total: action.total } };
+      return {
+        ...state,
+        scan: {
+          phase: action.phase,
+          done: action.done,
+          total: action.total,
+          ...(action.source ? { source: action.source } : {}),
+          ...(action.detail ? { detail: action.detail } : {}),
+        },
+      };
 
     case "scan-done":
       return {

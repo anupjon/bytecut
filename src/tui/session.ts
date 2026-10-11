@@ -71,7 +71,13 @@ export interface Session {
   scan(
     outDir: string,
     presets: Record<string, string>,
-    onProgress: (p: { phase: AuditPhase; done: number; total: number }) => void,
+    onProgress: (p: {
+      phase: AuditPhase;
+      done: number;
+      total: number;
+      source?: string;
+      detail?: string;
+    }) => void,
   ): Promise<{ model: Model; files: string[] }>;
   review(sources: string[], presets: Record<string, string>, outDir: string): Promise<Review>;
   run(

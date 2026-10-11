@@ -59,6 +59,8 @@ export async function estimateVideo(
     cache: AnalysisCache;
     ffmpegVersion: string;
     signal?: AbortSignal | undefined;
+    /** Called after each sample encode, so a slow estimate can show that it is working. */
+    onStep?: ((step: { done: number; total: number }) => void) | undefined;
   },
   sourcePath: string,
 ): Promise<VideoEstimate | null> {
@@ -70,6 +72,10 @@ export async function estimateVideo(
   const starts = sampleStarts(item.durationSec);
   const exact = starts.length === 1 && starts[0]!.durationSec >= item.durationSec;
   const perCodec: VideoEstimate["perCodec"] = [];
+  const stepTotal =
+    item.outputs.filter((o) => o.role === "video" && encoderFor(o.codec, caps)).length *
+    starts.length;
+  let stepsDone = 0;
 
   for (const out of item.outputs) {
     if (out.role !== "video") continue;
@@ -108,6 +114,7 @@ export async function estimateVideo(
           },
           deps.signal,
         );
+        deps.onStep?.({ done: ++stepsDone, total: stepTotal });
         seconds += s.durationSec;
       }
       streamBytes = Math.round(seconds > 0 ? (total / seconds) * item.durationSec : total);

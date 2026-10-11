@@ -137,3 +137,27 @@ describe("list selection", () => {
     await current.waitFor((f) => f.includes("cannot read the project"), "the error");
   });
 });
+
+describe("a slow scan", () => {
+  it("names the file and the step instead of looking stuck", async () => {
+    const { session } = fakeSession({
+      async scan(_outDir, _presets, onProgress) {
+        onProgress({
+          phase: "estimate",
+          done: 0,
+          total: 1,
+          source: "big.mp4",
+          detail: "encoding sample 2 of 6",
+        });
+        return new Promise(() => undefined);
+      },
+    });
+    current = mount(session);
+    await current.waitFor((f) => f.includes("encoding sample 2 of 6"), "the step");
+    const frame = current.frame();
+    expect(frame).toContain("Scanning 0/1 files (estimate)");
+    expect(frame).toContain("big.mp4: encoding sample 2 of 6");
+    // A video is not an "image": the count says files.
+    expect(frame).not.toContain("images");
+  });
+});

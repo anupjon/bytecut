@@ -108,6 +108,9 @@ SSIMULACRA2 runs as WebAssembly in worker threads, so no native binary is needed
 
 ## Video
 
+Estimating a large video encodes real samples, so the first scan of a 4K file can take a minute or
+more; the screen shows which sample it is on, and the result is cached by content hash.
+
 bytecut uses **your own** `ffmpeg` and `ffprobe` (`--ffmpeg`, `BYTECUT_FFMPEG`, `ffmpegPath`, or
 `PATH`). It never downloads or bundles one. Without ffmpeg images work fully and videos are
 listed as "needs ffmpeg" with the install command for your OS. Without an AV1 encoder you still

@@ -56,6 +56,26 @@ describe("scanning", () => {
     expect(s.scan).toEqual({ phase: "analyze", done: 3, total: 9 });
   });
 
+  it("keeps the file and step a slow scan reports, and drops them when the next event has none", () => {
+    const s = reducer(initialState("out"), {
+      type: "scan-progress",
+      phase: "estimate",
+      done: 0,
+      total: 1,
+      source: "big.mp4",
+      detail: "encoding sample 2 of 6",
+    });
+    expect(s.scan).toEqual({
+      phase: "estimate",
+      done: 0,
+      total: 1,
+      source: "big.mp4",
+      detail: "encoding sample 2 of 6",
+    });
+    const next = reducer(s, { type: "scan-progress", phase: "estimate", done: 1, total: 1 });
+    expect(next.scan).toEqual({ phase: "estimate", done: 1, total: 1 });
+  });
+
   it("scan-done opens the list with the default selection and cursor at the top", () => {
     const s = abc();
     expect(s.view).toBe("list");
