@@ -1,6 +1,6 @@
 {
   "name": "bytecut",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Audit and optimize images and videos in web projects.",
   "type": "module",
   "license": "MIT",
