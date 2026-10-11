@@ -9,6 +9,7 @@ import {
   discover,
   ffmpegInstallText,
   ffmpegStatus,
+  makeScorerFactory,
   noAssetsMessage,
 } from "./shared.js";
 import { doctorDeps } from "./system.js";
@@ -50,6 +51,7 @@ export async function runDefault(): Promise<void> {
       toolVersion: pkg.version,
       ffmpeg: ffmpegStatus(found.config),
       videoEngine: createVideoEngine({}, found.config),
+      makeScorer: makeScorerFactory(undefined, found.config),
       needsFfmpeg: ffmpegInstallText(),
       loadDoctor: async () => formatDoctorReport(await collectDoctorReport(doctorDeps())),
     });

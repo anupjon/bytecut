@@ -36,7 +36,8 @@ export const orphanedOutput: AuditRule<ProjectContext> = {
       if (!item || item.skip) continue;
       const wanted = new Set(item.outputs.map((o) => o.path));
       for (const out of entry.outputs) {
-        if (!wanted.has(out.path)) {
+        // A width stepped down to fit a size cap is still what the plan asks for.
+        if (!wanted.has(out.path) && !wanted.has(out.search?.plannedPath ?? "")) {
           findings.push({
             ruleId: ID,
             severity: "info",

@@ -14,6 +14,7 @@ import {
   type VideoOutputResult,
 } from "../execute/run.js";
 import { SafeFs } from "../fs-safe.js";
+import type { SelectedScorer } from "../quality/select.js";
 import { sha256 } from "../hash.js";
 import { checkCache, checkVideoCache, type CacheState } from "../manifest/cache.js";
 import { parseManifest, serializeManifest } from "../manifest/io.js";
@@ -45,6 +46,11 @@ export interface OptimizeOptions {
    * `none` to record (and remove) nothing. Refreshing it never re-encodes anything.
    */
   placeholder?: PlaceholderKind | "none";
+  /**
+   * Creates the quality scorer when an output with a perceptual target needs one. Absent:
+   * such outputs fall back to their fixed quality, with a warning.
+   */
+  makeScorer?: (fs: SafeFs) => Promise<SelectedScorer>;
   /** Force one preset for every image instead of classifying. */
   presetOverride?: string;
   /** Per-file preset by source path (relative, POSIX); wins over `presetOverride` and the classifier. */
@@ -274,33 +280,60 @@ export async function optimize(options: OptimizeOptions): Promise<OptimizeOutcom
     };
   }
 
-  const result = await runPlan(finalPlan, {
-    projectRoot,
-    engine,
-    fs,
-    manifest,
-    ...(options.force !== undefined ? { force: options.force } : {}),
-    ...(options.concurrency !== undefined ? { concurrency: options.concurrency } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-    ...(options.onItemStart ? { onItemStart: options.onItemStart } : {}),
-    ...(options.onOutputDone ? { onOutputDone: options.onOutputDone } : {}),
-    ...(options.onItemDone ? { onItemDone: options.onItemDone } : {}),
-    ...(options.videoEngine
-      ? {
-          video: {
-            engine: options.videoEngine,
-            ...(options.videoConcurrency !== undefined
-              ? { concurrency: options.videoConcurrency }
-              : {}),
-            ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
-          },
-        }
-      : {}),
-    ...(options.onVideoItemStart ? { onVideoItemStart: options.onVideoItemStart } : {}),
-    ...(options.onVideoProgress ? { onVideoProgress: options.onVideoProgress } : {}),
-    ...(options.onVideoOutputDone ? { onVideoOutputDone: options.onVideoOutputDone } : {}),
-    ...(options.onVideoItemDone ? { onVideoItemDone: options.onVideoItemDone } : {}),
-  });
+  // The scorer (WASM workers or a native tool) is only started if an output needs a search.
+  let selected: Promise<SelectedScorer> | null = null;
+  const scorerNotes: string[] = [];
+  const makeScorer = options.makeScorer;
+  const quality = makeScorer
+    ? {
+        async scorer() {
+          selected ??= makeScorer(fs).then((s) => {
+            scorerNotes.push(...s.notes);
+            return s;
+          });
+          return (await selected).scorer;
+        },
+      }
+    : undefined;
+
+  const runAll = (): Promise<RunResult> =>
+    runPlan(finalPlan, {
+      projectRoot,
+      engine,
+      fs,
+      manifest,
+      ...(quality ? { quality } : {}),
+      ...(options.force !== undefined ? { force: options.force } : {}),
+      ...(options.concurrency !== undefined ? { concurrency: options.concurrency } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.onItemStart ? { onItemStart: options.onItemStart } : {}),
+      ...(options.onOutputDone ? { onOutputDone: options.onOutputDone } : {}),
+      ...(options.onItemDone ? { onItemDone: options.onItemDone } : {}),
+      ...(options.videoEngine
+        ? {
+            video: {
+              engine: options.videoEngine,
+              ...(options.videoConcurrency !== undefined
+                ? { concurrency: options.videoConcurrency }
+                : {}),
+              ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
+            },
+          }
+        : {}),
+      ...(options.onVideoItemStart ? { onVideoItemStart: options.onVideoItemStart } : {}),
+      ...(options.onVideoProgress ? { onVideoProgress: options.onVideoProgress } : {}),
+      ...(options.onVideoOutputDone ? { onVideoOutputDone: options.onVideoOutputDone } : {}),
+      ...(options.onVideoItemDone ? { onVideoItemDone: options.onVideoItemDone } : {}),
+    });
+
+  let result: RunResult;
+  try {
+    result = await runAll();
+  } finally {
+    const started = selected ? await (selected as Promise<SelectedScorer>).catch(() => null) : null;
+    await started?.scorer.close();
+  }
+  result.warnings.push(...scorerNotes);
 
   const updated = updateManifest(
     manifest,

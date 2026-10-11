@@ -1,12 +1,14 @@
 import { resolve } from "node:path";
-import type { ImageEngine } from "../engines/types.js";
+import type { EncodeResult, ImageEngine } from "../engines/types.js";
 import { sha256 } from "../hash.js";
-import { checkCache, type CacheMissReason } from "../manifest/cache.js";
+import { checkCache, recordedByPlannedPath, type CacheMissReason } from "../manifest/cache.js";
 import type { Manifest } from "../manifest/types.js";
 import type { Plan, PlanItem, VideoPlanItem } from "../plan/types.js";
 import type { VideoEngine } from "../video/types.js";
 import { runVideoItem, type VideoLaneFs } from "./video.js";
-import type { ImageFormat } from "../presets/photo.js";
+import type { ImageFormat, QualitySearch } from "../presets/photo.js";
+import type { QualityScorer } from "../quality/types.js";
+import { searchQuality } from "../quality/search.js";
 
 /**
  * written: encoded and written. unchanged: an identical file was already on disk.
@@ -20,6 +22,8 @@ export type OutputStatus =
   | "protected"
   /** The encoder this output needs is not installed (e.g. no AV1 encoder). */
   | "unavailable"
+  /** A configured quality or size constraint could not be met; nothing was written. */
+  | "unmet"
   | "failed"
   | "cancelled";
 
@@ -34,6 +38,10 @@ export interface OutputResult {
   effort: number;
   sha256?: string;
   encoder?: string;
+  /** Present when the quality came from a perceptual search. */
+  search?: QualitySearch & { plannedPath?: string };
+  score?: number;
+  scorer?: "wasm" | "native";
   status: OutputStatus;
   error?: string;
 }
@@ -117,6 +125,11 @@ export interface RunOptions {
     /** Shown with "needs ffmpeg" when there is no engine. */
     needsFfmpeg?: string;
   };
+  /**
+   * Perceptual search. Absent means outputs with a `search` fall back to their fixed quality,
+   * with a warning, rather than failing the run.
+   */
+  quality?: { scorer(): Promise<QualityScorer> };
   manifest: Manifest | null;
   /** Re-encode even when unchanged, and overwrite outputs we don't own. */
   force?: boolean;
@@ -183,7 +196,7 @@ async function runItem(
   if (!options.force && entry) {
     const state = await checkCache(item, entry, hashOutput);
     if (state.kind === "hit") {
-      const recorded = new Map(entry.outputs.map((o) => [o.path, o]));
+      const recorded = recordedByPlannedPath(entry);
       const outputs = item.outputs.map((planned): OutputResult => {
         const r = recorded.get(planned.path)!;
         return {
@@ -197,6 +210,9 @@ async function runItem(
           effort: r.effort,
           ...(r.sha256 ? { sha256: r.sha256 } : {}),
           encoder: r.encoder,
+          ...(r.search ? { search: r.search } : {}),
+          ...(r.score !== undefined ? { score: r.score } : {}),
+          ...(r.scorer ? { scorer: r.scorer } : {}),
           status: r.status === "already-optimal" ? "already-optimal" : "unchanged",
         };
       });
@@ -223,13 +239,83 @@ async function runItem(
       continue;
     }
     try {
-      const encoded = await options.engine.encode(input, planned);
+      let encoded: EncodeResult | undefined;
+      let outPath = planned.path;
+      let quality = planned.quality;
+      let searched: Pick<OutputResult, "search" | "score" | "scorer"> = {};
+
+      if (planned.search && !planned.lossless && options.quality) {
+        const biggerSibling = Math.max(
+          0,
+          ...item.outputs
+            .filter((o) => o.format === planned.format && o.width < planned.width)
+            .map((o) => o.width),
+        );
+        const scorer = await options.quality.scorer();
+        const outcome = await searchQuality({
+          engine: options.engine,
+          scorer,
+          input,
+          format: planned.format,
+          width: planned.width,
+          effort: planned.effort,
+          search: planned.search,
+          minWidth: biggerSibling,
+          signal: options.signal,
+        });
+        if (outcome.ok) {
+          encoded = outcome.encoded;
+          quality = outcome.quality;
+          const stepped = outcome.width !== planned.width;
+          if (stepped) {
+            // The file is named for what it is; the manifest remembers what it stands in for.
+            outPath = planned.path.replace(
+              new RegExp(`-${planned.width}\\.${planned.format}$`),
+              `-${outcome.width}.${planned.format}`,
+            );
+          }
+          searched = {
+            search: { ...planned.search, ...(stepped ? { plannedPath: planned.path } : {}) },
+            score: Math.round(outcome.score * 100) / 100,
+            scorer: scorer.kind,
+          };
+          for (const note of outcome.notes) warnings.push(`${outPath}: ${note}`);
+        } else if (outcome.cancelled) {
+          record({ ...shared, width: planned.width, height: 0, bytes: 0, status: "cancelled" });
+          continue;
+        } else if (outcome.unsearchable) {
+          warnings.push(
+            `${planned.path}: perceptual search was not possible (${outcome.reason}); used quality ${planned.quality}`,
+          );
+        } else {
+          record({
+            ...shared,
+            width: planned.width,
+            height: 0,
+            bytes: 0,
+            status: "unmet",
+            error: outcome.reason,
+          });
+          // A constraint the user configured was not met: the run reports failure.
+          failed = true;
+          continue;
+        }
+      } else if (planned.search && !planned.lossless) {
+        warnings.push(
+          `${planned.path}: no quality scorer available; used the fixed quality ${planned.quality} instead of the ssimulacra2 target`,
+        );
+      }
+
+      encoded ??= await options.engine.encode(input, planned);
       const result = {
         ...shared,
+        path: outPath,
+        quality,
         width: encoded.width,
         height: encoded.height,
         bytes: encoded.data.byteLength,
         encoder: encoded.encoder,
+        ...searched,
       };
 
       // §6.7: never emit a file larger than what we started with.
@@ -239,7 +325,7 @@ async function runItem(
       }
 
       const newHash = sha256(encoded.data);
-      const onDisk = await options.fs.readOutput(planned.path);
+      const onDisk = await options.fs.readOutput(outPath);
       if (onDisk) {
         const diskHash = sha256(onDisk);
         if (diskHash === newHash) {
@@ -247,16 +333,16 @@ async function runItem(
           continue;
         }
         // §6.6: only replace files the manifest says are ours and unmodified.
-        if (!options.force && owned.get(planned.path) !== diskHash) {
+        if (!options.force && owned.get(outPath) !== diskHash) {
           warnings.push(
-            `${planned.path}: a file is already there that bytecut did not write or that was edited; left alone (use --force to overwrite)`,
+            `${outPath}: a file is already there that bytecut did not write or that was edited; left alone (use --force to overwrite)`,
           );
           record({ ...result, status: "protected" });
           continue;
         }
       }
 
-      await options.fs.writeOutput(planned.path, encoded.data);
+      await options.fs.writeOutput(outPath, encoded.data);
       record({ ...result, sha256: newHash, status: "written" });
     } catch (error) {
       failed = true;

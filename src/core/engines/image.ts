@@ -8,6 +8,7 @@ import type {
   EncodeResult,
   ImageAnalysis,
   ImageEngine,
+  RawImage,
   SourceFormat,
 } from "./types.js";
 
@@ -137,6 +138,41 @@ export const sharpImageEngine: ImageEngine = {
         icc: meta.icc?.byteLength ?? 0,
         gps: meta.exif ? hasGpsIfd(meta.exif) : false,
       },
+    };
+  },
+
+  async decodeRaw(input, options): Promise<RawImage> {
+    // Same preparation as `encode`, then everything is brought to sRGB so a file that keeps a
+    // wide-gamut ICC profile is compared in the same space as the source.
+    let image = sharp(input).rotate();
+    if (options.width) image = image.resize({ width: options.width, withoutEnlargement: true });
+    const { data, info } = await image
+      .toColourspace("srgb")
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return {
+      data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+      width: info.width,
+      height: info.height,
+      channels: 4,
+    };
+  },
+
+  async encodeRaw(image, request): Promise<EncodeResult> {
+    const raw = sharp(image.data, {
+      raw: { width: image.width, height: image.height, channels: image.channels },
+    });
+    const encoded =
+      request.format === "avif"
+        ? raw.avif({ quality: request.quality, effort: request.effort })
+        : raw.webp({ quality: request.quality, effort: request.effort });
+    const { data, info } = await encoded.toBuffer({ resolveWithObject: true });
+    return {
+      data,
+      width: info.width,
+      height: info.height,
+      encoder: encoderNames()[request.format],
     };
   },
 

@@ -15,6 +15,22 @@ export interface ImagePreset {
    * `fetchpriority="high"` and never lazy-load them.
    */
   priority?: boolean;
+  /**
+   * A perceptual target. When set, lossy outputs search for the smallest quality that still
+   * scores `target` (SSIMULACRA2), instead of using `encoders[format].quality` as is.
+   */
+  search?: QualitySearch;
+}
+
+/** Perceptual quality target for the search; `floor` and `maxBytes` come as a pair. */
+export interface QualitySearch {
+  metric: "ssimulacra2";
+  /** Smallest acceptable score (100 is identical). */
+  target: number;
+  /** Lowest score the search may accept to fit `maxBytes`. */
+  floor?: number;
+  /** Largest allowed size of one output file. */
+  maxBytes?: number;
 }
 
 export const PHOTO_PRESET: ImagePreset = {

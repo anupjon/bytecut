@@ -139,7 +139,15 @@ export async function buildPlan(options: BuildPlanOptions): Promise<Plan> {
           );
         }
         claimed.set(path, source);
-        outputs.push({ path, format, width, lossless, ...preset.encoders[format] });
+        outputs.push({
+          path,
+          format,
+          width,
+          lossless,
+          ...preset.encoders[format],
+          // A lossless output is exact; there is nothing to search for.
+          ...(preset.search && !lossless ? { search: { ...preset.search } } : {}),
+        });
       }
     }
     items.push({

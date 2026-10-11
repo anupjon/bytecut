@@ -4,6 +4,7 @@ import { classify } from "../classify/classify.js";
 import { classifyVideo } from "../classify/video.js";
 import type { ImageEngine } from "../engines/types.js";
 import { toPosix } from "../posix.js";
+import { formatBytes } from "../units.js";
 import { mirroredDir, targetWidths } from "../plan/build.js";
 import { plannedVideoOutputs } from "../plan/video.js";
 import type { ImagePreset } from "../presets/photo.js";
@@ -218,6 +219,17 @@ export function formatExplanation(e: Explanation): string {
       );
     }
     lines.push(`  priority: ${r.priority ? "yes (fetchpriority=high, never lazy)" : "no"}`);
+    if (r.search) {
+      const parts = [`ssimulacra2 >= ${r.search.target}`];
+      if (r.search.maxBytes !== undefined) {
+        parts.push(
+          `at most ${formatBytes(r.search.maxBytes)} per file, quality may fall to a score of ${r.search.floor}`,
+        );
+      }
+      lines.push(
+        `  search:   ${parts.join("; ")} (quality is found per image; lossless outputs are exact)`,
+      );
+    }
   } else if (r) {
     lines.push(`  codecs:   ${r.codecs.join(", ")}`);
     lines.push(`  audio:    ${r.audio === "strip" ? "removed" : "kept"}`);

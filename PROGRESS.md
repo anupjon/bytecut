@@ -2,18 +2,18 @@
 
 ## Status
 
-| Milestone                           | Status                                              |
-| ----------------------------------- | --------------------------------------------------- |
-| M0 Scaffold                         | Complete locally; CI not yet run                    |
-| M1 Image engine + headless optimize | Complete locally; CI not yet run                    |
-| M2 Plan, manifest, cache            | Complete locally; CI not yet run                    |
-| M3 Scanner, classifier, audit       | Complete locally; CI not yet run                    |
-| M4 TUI                              | Complete locally; CI not yet run                    |
-| M5 Video                            | Complete locally; CI not yet run                    |
-| M6 Web outputs                      | Complete locally; CI not yet run                    |
-| M7 Config                           | Complete locally; CI not yet run                    |
-| M8 CI mode                          | Complete locally; CI not yet run                    |
-| M9 Quality targets & compare        | In progress: stage 1 of 3 (scorer) complete locally |
+| Milestone                           | Status                                                       |
+| ----------------------------------- | ------------------------------------------------------------ |
+| M0 Scaffold                         | Complete locally; CI not yet run                             |
+| M1 Image engine + headless optimize | Complete locally; CI not yet run                             |
+| M2 Plan, manifest, cache            | Complete locally; CI not yet run                             |
+| M3 Scanner, classifier, audit       | Complete locally; CI not yet run                             |
+| M4 TUI                              | Complete locally; CI not yet run                             |
+| M5 Video                            | Complete locally; CI not yet run                             |
+| M6 Web outputs                      | Complete locally; CI not yet run                             |
+| M7 Config                           | Complete locally; CI not yet run                             |
+| M8 CI mode                          | Complete locally; CI not yet run                             |
+| M9 Quality targets & compare        | In progress: stages 1–2 of 3 complete (scorer, image search) |
 
 ## M0 — what changed
 
@@ -307,6 +307,40 @@ go/no-go gate and it passed.
   1.6 s (~450 MB RSS); 2560x1440 2.6 s (~740 MB RSS). A search step on a 512 px crop is therefore
   cheap, and scoring one full-size 2560 px output is affordable.
 
+## M9 — stage 2 of 3: image quality search (what changed)
+
+Stage 3 (video, `vmaf`, `/compare`) is not started.
+
+- **Config** (image presets): `ssimulacra2: <1–100>` is the lowest acceptable score; `maxSize` caps
+  one output file; `floor` is the lowest score allowed while fitting that cap. `maxSize` needs
+  `ssimulacra2` and **requires `floor`** (how far quality may fall is a stated tradeoff, not a hidden
+  default); `floor` must not exceed the target and means nothing without `maxSize`. `vmaf` and `raw`
+  are still rejected, with the reason.
+- **Plan**: an output may carry `search: { metric, target, floor?, maxBytes? }`; `quality` stays the
+  preset's fixed value, used only if a search cannot run. Lossless outputs are exact and never carry one.
+- **Manifest** (all optional): `search` (the parameters, plus `plannedPath` when the width was stepped
+  down), `score` (measured on the full-size file) and `scorer` (`wasm`/`native`). Cache validity compares
+  the search parameters, not `quality`, and ignores `scorer`.
+- **Algorithm** (`src/core/quality/search.ts`), per lossy output: decode the source exactly as
+  `encode` prepares it; take the 512 px tile of median detail; binary-search quality 1–100 for the
+  smallest whose sample scores ≥ target (~7 crop encodes); encode full size and score it once, raising
+  quality in bounded steps if the whole image disagrees with the sample. Over `maxSize`: find the
+  quality where the sample scores the floor, then bisect full-size encodes for the largest that fits.
+  Still over: step the width down by 10% (even widths, never below half the planned width or the next
+  smaller planned width) and repeat. Alpha images are scored over white and over black, keeping the
+  lower score; wide-gamut sources are compared in sRGB.
+- **Never** writes an output over its cap, below its floor, larger than its source (§6.7) or upscaled.
+  A constraint that cannot be met is reported as `unmet` with the sizes it did reach, nothing is
+  written for it, and the run exits 1.
+- **A stepped-down output is named by its real width** (`photo-418.webp`); the manifest records
+  `plannedPath`, so the cache, `project/stale-output`, `project/orphaned-output` and snippets all
+  treat it as the output the plan asked for (checked against a real manifest: snippet, audit and
+  dry-run all agree).
+- **Wiring**: `optimize` (and the TUI) create the scorer lazily, only when an output needs a search;
+  `--ssimulacra2 <path>` selects a native tool; `explain` shows the search; dry-run plans show
+  `ssimulacra2 >= 80, <= 150 KB` instead of a quality; results show `q67 · ssimulacra2 81.0`.
+  Cancelling mid-search records `cancelled` and writes nothing.
+
 ## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
 - `pnpm typecheck`: pass. `pnpm lint`: pass. `pnpm build`: pass. `pnpm test`: 924 tests in 71 files
@@ -321,6 +355,14 @@ go/no-go gate and it passed.
   `init` writing defaults, the save prompt ignoring what the config holds, video target sign flipped,
   TOML/TS configs rewritten, and file names not glob-escaped. One was not caught at first (assets
   vs per-file choice); a precedence test was added and the mutation then failed as it should.
+- **M9 stage 2**: 1009 tests pass, 1 skipped (the native-tool comparison, see stage 1). Real-encoder
+  integration tests run `optimize -y` with the built-in scorer and **no native binary**, then measure the
+  output independently: the full-size score meets the target and matches what the manifest recorded
+  within 0.05; a higher target costs more bytes than a lower one; a size cap is respected and the
+  floor holds; an unreachable cap exits 1 and writes nothing; a second run does no encoding and leaves
+  the manifest byte-identical. Mutation-checked, 12 of 12 caught (three needed new tests first: floor
+  ignored while fitting, lossless outputs marked for search, and the cache ignoring search
+  parameters).
 - **M9 stage 1**: 959 tests pass, 1 skipped (the comparison against a native tool, which needs
   `BYTECUT_TEST_SSIMULACRA2=<path to ssimulacra2>`; run by hand here against the built reference
   tool and passed). `pnpm typecheck`, `pnpm lint` and `pnpm build` pass.
@@ -400,6 +442,16 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
 - **A project with no media passes** (`Scanned 0 images`); a wrong working directory therefore also
   passes. Only a missing asset folder is exit 2.
 - **Submodules and paths outside the project folder** are not considered by `--changed`.
+- **A search is slow**, because quality is found with real encodes. Measured on a 1400 px photo,
+  1280 px output, target 80: WebP 3.6 s (9 encodes), AVIF 9 s (9 encodes), AVIF with a size cap 23 s
+  (21 encodes). A three-width, two-format preset is therefore on the order of a minute per image the
+  first time. The result is committed in the manifest and cached, so it is paid once per source; the
+  audit's size estimates still use the preset's fixed quality and do not know about targets.
+- **An unmet output is not recorded**, so a later run repeats its (deterministically failing) search.
+- **The search assumes quality and size/score are roughly monotonic.** The full-size check and a bounded
+  bump catch an optimistic sample; a very non-monotonic encoder could miss the true minimum.
+- **Stepping down is by size only** (10% steps, never below half the planned width); a score target that
+  cannot be reached at any quality fails rather than stepping.
 - **A native scorer can pick a different quality than WASM** once searches exist: scores differ by
   up to ~0.03, so a threshold crossing can land one step apart. Stage 2 records which scorer ran
   in the manifest and keeps it out of cache validity so runs do not ping-pong between machines.

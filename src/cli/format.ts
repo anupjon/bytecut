@@ -43,7 +43,12 @@ export function formatPlan(plan: Plan, cache?: Map<string, CacheState>): string 
       continue;
     }
     for (const out of item.outputs) {
-      const mode = out.lossless ? "lossless" : `q${out.quality}`;
+      // A searched output has no quality yet: the target says what it will be held to.
+      const mode = out.lossless
+        ? "lossless"
+        : out.search
+          ? `ssimulacra2 >= ${out.search.target}${out.search.maxBytes !== undefined ? `, <= ${formatBytes(out.search.maxBytes)}` : ""}`
+          : `q${out.quality}`;
       lines.push(`  ${out.path}  (${out.format}, ${out.width}w, ${mode})`);
     }
   }
@@ -99,9 +104,9 @@ function outputLine(out: OutputResult, sourceBytes: number): string {
   const size = formatBytes(out.bytes);
   switch (out.status) {
     case "written":
-      return `${head}  ${size.padStart(9)}  ${percentChange(sourceBytes, out.bytes)}`;
+      return `${head}  ${size.padStart(9)}  ${percentChange(sourceBytes, out.bytes)}${searchNote(out)}`;
     case "unchanged":
-      return `${head}  ${size.padStart(9)}  ${percentChange(sourceBytes, out.bytes)}  (already on disk)`;
+      return `${head}  ${size.padStart(9)}  ${percentChange(sourceBytes, out.bytes)}  (already on disk)${searchNote(out)}`;
     case "already-optimal":
       return `${head}  already optimal (${size} ≥ source), not written`;
     case "protected":
@@ -110,9 +115,18 @@ function outputLine(out: OutputResult, sourceBytes: number): string {
       return `${head}  skipped: encoder not available`;
     case "failed":
       return `${head}  failed: ${out.error}`;
+    case "unmet":
+      return `${head}  not written: ${out.error}`;
     case "cancelled":
       return `${head}  cancelled`;
   }
+}
+
+/** ` · q67 · ssimulacra2 81.0`, plus a mark when the width was stepped down to fit a cap. */
+function searchNote(out: OutputResult): string {
+  if (out.score === undefined) return "";
+  const stepped = out.search?.plannedPath ? " · width stepped down" : "";
+  return `  · q${out.quality} · ssimulacra2 ${out.score.toFixed(1)}${stepped}`;
 }
 
 function videoOutputLine(out: VideoOutputResult, sourceBytes: number): string {
@@ -134,6 +148,8 @@ function videoOutputLine(out: VideoOutputResult, sourceBytes: number): string {
       return `${head}  skipped: ${out.codec === "av1" ? "no AV1 encoder installed" : "encoder not available"}`;
     case "failed":
       return `${head}  failed: ${out.error}`;
+    case "unmet":
+      return `${head}  not written: ${out.error}`;
     case "cancelled":
       return `${head}  cancelled`;
   }

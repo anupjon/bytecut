@@ -5,7 +5,7 @@ import type { VideoEngine } from "../core/video/types.js";
 import type { ResolvedConfig } from "../core/config/resolve.js";
 import type { ProjectInfo } from "../core/scan/detect.js";
 import { App } from "./app.js";
-import { createSession, type Session } from "./session.js";
+import { createSession, type Session, type SessionOptions } from "./session.js";
 
 export interface RunTuiOptions {
   projectRoot: string;
@@ -19,6 +19,7 @@ export interface RunTuiOptions {
   toolVersion: string;
   ffmpeg: { found: boolean; installHint: string };
   videoEngine?: VideoEngine | null;
+  makeScorer?: SessionOptions["makeScorer"];
   needsFfmpeg?: string;
   loadDoctor: () => Promise<string>;
   /** Tests inject a session to avoid touching the file system through the core. */
@@ -39,6 +40,7 @@ export async function runTui(options: RunTuiOptions): Promise<void> {
       toolVersion: options.toolVersion,
       ffmpeg: options.ffmpeg,
       videoEngine: options.videoEngine ?? null,
+      ...(options.makeScorer ? { makeScorer: options.makeScorer } : {}),
       ...(options.needsFfmpeg ? { needsFfmpeg: options.needsFfmpeg } : {}),
     });
 

@@ -67,3 +67,34 @@ describe("plan schema", () => {
     expect(() => parsePlan("not json", "my.json")).toThrowError(/my\.json is not valid JSON/);
   });
 });
+
+describe("plan schema: search", () => {
+  const searched = () => {
+    const p = clone();
+    p.items[0]!.outputs[0]!.search = {
+      metric: "ssimulacra2",
+      target: 80,
+      floor: 60,
+      maxBytes: 120000,
+    };
+    return p;
+  };
+
+  it("round-trips an output with a perceptual target", () => {
+    expect(parsePlan(serializePlan(searched()))).toEqual(searched());
+  });
+
+  it("rejects an unknown metric, an out-of-range target and stray keys", () => {
+    for (const search of [
+      { metric: "vmaf", target: 90 },
+      { metric: "ssimulacra2", target: 0 },
+      { metric: "ssimulacra2", target: 101 },
+      { metric: "ssimulacra2", target: 80, maxBytes: -1 },
+      { metric: "ssimulacra2", target: 80, extra: true },
+    ]) {
+      const p = clone() as unknown as { items: Array<{ outputs: Array<Record<string, unknown>> }> };
+      p.items[0]!.outputs[0]!.search = search;
+      expect(() => parsePlan(JSON.stringify(p))).toThrow();
+    }
+  });
+});

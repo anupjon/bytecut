@@ -19,6 +19,7 @@ const STATUS_COLOR: Record<(OutputResult | VideoOutputResult)["status"], string>
   protected: "yellow",
   unavailable: "yellow",
   failed: "red",
+  unmet: "red",
   cancelled: "yellow",
 };
 

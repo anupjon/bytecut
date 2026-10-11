@@ -27,6 +27,15 @@ const outputSchema = z
     lossless: z.boolean(),
     quality: z.number().int().min(1).max(100),
     effort: z.number().int().min(0).max(9),
+    search: z
+      .object({
+        metric: z.literal("ssimulacra2"),
+        target: z.number().min(1).max(100),
+        floor: z.number().min(1).max(100).optional(),
+        maxBytes: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

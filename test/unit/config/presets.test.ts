@@ -104,6 +104,33 @@ describe("buildCatalog", () => {
     expect(buildCatalog({ v: { extends: "content-video" } }).video.v!.audio).toBe("keep");
   });
 
+  it("turns a perceptual target and size cap into the preset's search", () => {
+    const { image } = buildCatalog({
+      crisp: { extends: "hero", ssimulacra2: 82, floor: 65, maxSize: 150_000 },
+      plain: { extends: "photo", ssimulacra2: 70 },
+    });
+    expect(image.crisp!.search).toEqual({
+      metric: "ssimulacra2",
+      target: 82,
+      floor: 65,
+      maxBytes: 150_000,
+    });
+    expect(image.plain!.search).toEqual({ metric: "ssimulacra2", target: 70 });
+    expect(image.hero!.search).toBeUndefined();
+    // It is inherited by presets that extend one with a target.
+    const inherited = buildCatalog({
+      a: { extends: "photo", ssimulacra2: 75 },
+      b: { extends: "a" },
+    });
+    expect(inherited.image.b!.search).toEqual({ metric: "ssimulacra2", target: 75 });
+  });
+
+  it("rejects a perceptual target on a video preset", () => {
+    expect(fails({ v: { extends: "content-video", ssimulacra2: 80 } })).toMatch(
+      /"v" extends a video preset, so `ssimulacra2` \(an image setting\) does not apply/,
+    );
+  });
+
   it("rejects an unnamed base, an unknown base (with a hint) and `svg`", () => {
     expect(fails({ mine: { widths: [100] } })).toMatch(/"mine" must say what it extends/);
     expect(fails({ mine: { extends: "phoot" } })).toMatch(

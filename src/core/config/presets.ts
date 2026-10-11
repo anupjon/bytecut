@@ -16,7 +16,17 @@ export const IMAGE_TARGETS = {
 /** CRF offsets for video: higher CRF is smaller and worse. */
 export const VIDEO_TARGET_CRF_OFFSET = { low: 4, balanced: 0, high: -4 } as const;
 
-const IMAGE_ONLY = ["widths", "formats", "quality", "effort", "lossless", "priority"] as const;
+const IMAGE_ONLY = [
+  "widths",
+  "formats",
+  "quality",
+  "effort",
+  "lossless",
+  "priority",
+  "ssimulacra2",
+  "floor",
+  "maxSize",
+] as const;
 const VIDEO_ONLY = ["audio", "maxWidth", "maxFps", "codecs", "crf"] as const;
 
 function fail(message: string): never {
@@ -49,6 +59,14 @@ function applyImage(name: string, base: ImagePreset, def: PresetConfig): ImagePr
   if (def.effort?.webp !== undefined) next.encoders.webp.effort = def.effort.webp;
   if (def.lossless !== undefined) next.lossless = def.lossless;
   if (def.priority !== undefined) next.priority = def.priority;
+  if (def.ssimulacra2 !== undefined) {
+    next.search = {
+      metric: "ssimulacra2",
+      target: def.ssimulacra2,
+      ...(def.floor !== undefined ? { floor: def.floor } : {}),
+      ...(def.maxSize !== undefined ? { maxBytes: def.maxSize } : {}),
+    };
+  }
   return next;
 }
 

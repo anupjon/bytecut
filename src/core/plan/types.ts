@@ -1,4 +1,4 @@
-import type { ImageFormat } from "../presets/photo.js";
+import type { ImageFormat, QualitySearch } from "../presets/photo.js";
 import type { VideoCodec } from "../video/types.js";
 
 export interface PlannedOutput {
@@ -9,6 +9,12 @@ export interface PlannedOutput {
   lossless: boolean;
   quality: number;
   effort: number;
+  /**
+   * Perceptual target: the executor searches for the quality (and, to fit `maxBytes`, may
+   * step the width down), so `quality` above is only the preset's fixed value. Never set
+   * for lossless outputs, which are exact.
+   */
+  search?: QualitySearch;
 }
 
 export interface PlanItem {

@@ -209,3 +209,37 @@ describe("M6 fields (additive, still version 3)", () => {
     expect(() => parseManifest(JSON.stringify(m))).toThrowError(/not a valid manifest/);
   });
 });
+
+describe("manifest: search records", () => {
+  const withSearch = (over: Record<string, unknown>) => {
+    const copy = structuredClone(sample);
+    Object.assign(copy.sources["b/two.jpg"]!.outputs[0]!, over);
+    return copy;
+  };
+
+  it("round-trips the search parameters, the score and the scorer", () => {
+    const m = withSearch({
+      search: {
+        metric: "ssimulacra2",
+        target: 80,
+        floor: 60,
+        maxBytes: 150000,
+        plannedPath: "b/two/two-1920.avif",
+      },
+      score: 81.23,
+      scorer: "wasm",
+    });
+    expect(parseManifest(serializeManifest(m))).toEqual(m);
+  });
+
+  it("rejects an unknown metric or scorer, so a typo cannot be read as something else", () => {
+    expect(() =>
+      parseManifest(serializeManifest(withSearch({ search: { metric: "vmaf", target: 9 } }))),
+    ).toThrow();
+    expect(() => parseManifest(serializeManifest(withSearch({ scorer: "gpu" })))).toThrow();
+  });
+
+  it("a manifest written before search existed still reads", () => {
+    expect(parseManifest(serializeManifest(sample))).toEqual(sample);
+  });
+});

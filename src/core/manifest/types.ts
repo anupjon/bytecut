@@ -35,6 +35,25 @@ export interface ManifestOutput {
   /** Encoder actually used, with version. */
   encoder: string;
   status: ManifestOutputStatus;
+  /** Present when the quality was found by a perceptual search. */
+  search?: ManifestSearch;
+  /** SSIMULACRA2 of this file against its source at this width, as the search measured it. */
+  score?: number;
+  /** Which scorer measured it. Informational: it is not part of cache validity. */
+  scorer?: "wasm" | "native";
+}
+
+/** The parameters a searched output was made with; they, not `quality`, decide cache validity. */
+export interface ManifestSearch {
+  metric: "ssimulacra2";
+  target: number;
+  floor?: number;
+  maxBytes?: number;
+  /**
+   * The path the plan listed when the width was stepped down to fit `maxBytes`, so the
+   * output is still recognised as the one the plan asks for.
+   */
+  plannedPath?: string;
 }
 
 export interface ManifestSource {

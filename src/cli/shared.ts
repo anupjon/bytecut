@@ -6,7 +6,10 @@ import { resolveConfig, type ResolvedConfig } from "../core/config/resolve.js";
 import type { ProjectInfo } from "../core/scan/detect.js";
 import { createFfmpegVideoEngine } from "../core/video/ffmpeg-engine.js";
 import type { VideoEngine } from "../core/video/types.js";
+import type { SafeFs } from "../core/fs-safe.js";
+import { selectScorer, type SelectedScorer } from "../core/quality/select.js";
 import { isFile, readOsReleaseId, run } from "./system.js";
+import { availableParallelism } from "node:os";
 
 export interface Discovery {
   projectRoot: string;
@@ -75,6 +78,37 @@ export function createVideoEngine(
     deps: { isFile },
     run,
   });
+}
+
+/**
+ * How a run gets its quality scorer: a native ssimulacra2 if one is named or on PATH,
+ * otherwise the built-in WebAssembly one. Created only when a search actually needs it.
+ */
+export function makeScorerFactory(
+  flag: string | undefined,
+  config: { ssimulacra2Path?: string | undefined } = {},
+): (fs: SafeFs) => Promise<SelectedScorer> {
+  return async (fs) => {
+    const sharp = (await import("sharp")).default;
+    return selectScorer({
+      flag,
+      config: config.ssimulacra2Path,
+      env: process.env,
+      platform: process.platform,
+      deps: { isFile },
+      fs,
+      run,
+      size: Math.max(1, Math.min(4, availableParallelism() - 1)),
+      toPng: async (image) =>
+        new Uint8Array(
+          await sharp(image.data, {
+            raw: { width: image.width, height: image.height, channels: 3 },
+          })
+            .png()
+            .toBuffer(),
+        ),
+    });
+  };
 }
 
 /** "install ffmpeg with: …" text for the OS we are on. */

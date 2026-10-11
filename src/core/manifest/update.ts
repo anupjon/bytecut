@@ -35,6 +35,9 @@ function toManifestOutput(out: OutputResult, publicPath: string): ManifestOutput
     effort: out.effort,
     encoder: out.encoder ?? "unknown",
     status: out.status === "already-optimal" ? "already-optimal" : "written",
+    ...(out.search ? { search: out.search } : {}),
+    ...(out.score !== undefined ? { score: out.score } : {}),
+    ...(out.scorer ? { scorer: out.scorer } : {}),
   };
 }
 
@@ -62,7 +65,14 @@ function mergeItem(
   const merged = new Map(produced);
   for (const previous of old?.outputs ?? []) {
     if (merged.has(previous.path)) continue;
-    if (plannedPaths.has(previous.path) && !sameSource) {
+    const standsFor = previous.search?.plannedPath;
+    if (standsFor !== undefined && merged.has(standsFor)) {
+      // The planned width fits now, so the stepped-down file is a leftover: stop vouching for
+      // it (it stays listed, and deletable, as an orphan).
+      const { plannedPath: _superseded, ...search } = previous.search!;
+      void _superseded;
+      merged.set(previous.path, { ...previous, search });
+    } else if (plannedPaths.has(standsFor ?? previous.path) && !sameSource) {
       // The file on disk was made from an older source and this run didn't replace it.
       merged.set(previous.path, { ...previous, status: "stale" });
     } else {

@@ -136,8 +136,9 @@ to preset names (first match wins; a pattern without `/` matches the name at any
 entries say what they `extends` (a built-in name without `extends` changes that built-in) and may set
 `target`, `widths`, `formats`, `quality`, `effort`, `lossless`, `priority` (images) or `audio`,
 `maxWidth`, `maxFps`, `codecs`, `crf` (video). `budgets` takes `maxFileSize` / `maxTotalSize` as bytes
-or `"250 KB"`. `ssimulacra2`, `vmaf` and `raw` are rejected until M9's later stages;
-`ssimulacra2Path` (an optional native scorer) is accepted.
+or `"250 KB"`. `vmaf` and `raw` are rejected until M9's later stages. On image presets `ssimulacra2` (lowest
+acceptable score), `maxSize` (cap per output) and `floor` (lowest score while fitting the cap; required
+with `maxSize`) turn on a perceptual quality search; `ssimulacra2Path` is an optional native scorer.
 
 ### Presets
 Built-ins: `photo`, `hero`, `icon`, `svg`, `background-video`, `content-video`, `gif-to-video`.
@@ -168,7 +169,7 @@ height, bytes, sha256?, lossless, quality, effort, encoder, status` where `statu
 `already-optimal` (no file, no sha256) or `stale`. Keys are sorted and there are no timestamps, so an
 unchanged run leaves the file byte-identical. Sources and videos may also carry `priority` (an LCP candidate: snippets emit `fetchpriority="high"`
 and no lazy loading) and a `placeholder` (`dominant-color`, `lqip` or `blurhash`); video outputs carry
-`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive.
+`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive. Image outputs found by a perceptual search also carry `search` (target, floor, size cap, and `plannedPath` when the width was stepped down), `score` and `scorer`.
 `outputs` lists everything bytecut owns for that source,
 including orphans, which is what makes them deletable under §6.3.
 
@@ -460,3 +461,8 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — The WASM build matches the reference C++ tool within 0.032 on 16 recorded pairs and the test tolerance is 0.1 — measured against libjxl `tools/ssimulacra2` (commit ef67fde), not asserted; rayon is off and worker threads provide parallelism.
 - 2026-10-10 — A named native scorer path that is missing falls back to the built-in WASM scorer with a note, and never to PATH — a typo must not silently pick a different binary (as with ffmpeg), while the scorer can always fall back because WASM is always there.
 - 2026-10-10 — Native scorer inputs are written as temp files inside `outDir` through `SafeFs.writeTemp` and removed after each score — keeps §3's single write module true for a child process that reads files.
+- 2026-10-10 — Perceptual search is described by the plan (`search` on an output) and recorded in the manifest (`search`, `score`, `scorer`), all optional and additive (confirmed with you) — cache validity compares the parameters, not the quality the search landed on.
+- 2026-10-10 — A width stepped down to fit `maxSize` is named by its real width and the manifest records the planned path (confirmed with you) — the file name never lies about its pixels, and the cache and orphan rules still recognise it.
+- 2026-10-10 — `floor` is required whenever `maxSize` is set (confirmed with you) — how far quality may fall is a tradeoff the config must state; no default can silently degrade images.
+- 2026-10-10 — The search samples the median-detail 512 px tile and then proves the answer on the full-size output — the busiest tile over-spends on flat images and the flattest under-spends on textured ones; the full-size score is the one that counts.
+- 2026-10-10 — Stepping down never goes below half the planned width or the next smaller planned width, and an unmet constraint fails the item (exit 1) without writing — a picture half as wide is not the one that was asked for, and a configured limit that is silently exceeded is worse than a reported failure.

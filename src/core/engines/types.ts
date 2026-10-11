@@ -45,6 +45,20 @@ export interface EncodeResult {
   encoder: string;
 }
 
+/** Decoded pixels in sRGB: 8 bits per channel, tightly packed, row-major. */
+export interface RawImage {
+  data: Uint8Array;
+  width: number;
+  height: number;
+  channels: 3 | 4;
+}
+
+export interface SearchEncodeRequest {
+  format: ImageFormat;
+  quality: number;
+  effort: number;
+}
+
 /** Behind an interface so the executor can be tested with a fake (§3). */
 export interface ImageEngine {
   analyze(input: Buffer): Promise<ImageAnalysis>;
@@ -54,6 +68,14 @@ export interface ImageEngine {
    * images (fakes) need not implement it; callers skip placeholders when it is absent.
    */
   placeholder?(input: Buffer, kind: PlaceholderKind): Promise<Placeholder>;
+  /**
+   * Decodes to sRGB RGBA exactly as `encode` would prepare it (orientation applied, resized to
+   * `width` without enlarging), so a quality search compares like with like. Optional: engines
+   * without it simply cannot run a perceptual search.
+   */
+  decodeRaw?(input: Buffer, options: { width?: number }): Promise<RawImage>;
+  /** Lossy-encodes raw pixels (a crop) for the quality search. */
+  encodeRaw?(image: RawImage, request: SearchEncodeRequest): Promise<EncodeResult>;
   /** What `encode` would report for each format, so drift can be detected without encoding. */
   encoders(): Record<ImageFormat, string>;
   /** Informational tool versions for the manifest. */

@@ -76,12 +76,48 @@ describe("config schema", () => {
     );
   });
 
-  it("rejects perceptual-search fields until they have an engine, and says so", () => {
-    for (const field of ["ssimulacra2", "vmaf", "raw"]) {
-      const message = errorOf({ presets: { a: { extends: "photo", [field]: 70 } } });
-      expect(message).toMatch(new RegExp(`presets\\.a\\.${field}: .*M9`));
-    }
+  it("accepts a native scorer path", () => {
     expect(() => parseConfig({ ssimulacra2Path: "/bin/ssimulacra2" }, "c")).not.toThrow();
+  });
+
+  describe("perceptual search fields", () => {
+    const preset = (fields: Record<string, unknown>) => ({
+      presets: { a: { extends: "photo", ...fields } },
+    });
+
+    it("accepts a target, and a size cap with its floor", () => {
+      expect(() => parseConfig(preset({ ssimulacra2: 80 }), "c")).not.toThrow();
+      const config = parseConfig(preset({ ssimulacra2: 80, floor: 60, maxSize: "150 KB" }), "c");
+      expect(config.presets!.a).toMatchObject({ ssimulacra2: 80, floor: 60, maxSize: 153_600 });
+    });
+
+    it("explains what each missing or inconsistent field needs", () => {
+      expect(errorOf(preset({ maxSize: "10 KB" }))).toMatch(
+        /presets\.a\.maxSize: needs `ssimulacra2`/,
+      );
+      expect(errorOf(preset({ ssimulacra2: 80, maxSize: "10 KB" }))).toMatch(
+        /presets\.a\.floor: is required with `maxSize`/,
+      );
+      expect(errorOf(preset({ floor: 60 }))).toMatch(/presets\.a\.floor: needs `ssimulacra2`/);
+      expect(errorOf(preset({ ssimulacra2: 80, floor: 60 }))).toMatch(
+        /presets\.a\.floor: only applies with `maxSize`/,
+      );
+      expect(errorOf(preset({ ssimulacra2: 60, floor: 80, maxSize: "10 KB" }))).toMatch(
+        /presets\.a\.floor: must not exceed `ssimulacra2` \(60\)/,
+      );
+    });
+
+    it("bounds the target to the metric's range", () => {
+      expect(errorOf(preset({ ssimulacra2: 0 }))).toMatch(/presets\.a\.ssimulacra2/);
+      expect(errorOf(preset({ ssimulacra2: 101 }))).toMatch(/presets\.a\.ssimulacra2/);
+    });
+
+    it("still rejects vmaf and raw, with the reason", () => {
+      expect(errorOf(preset({ vmaf: 90 }))).toMatch(
+        /presets\.a\.vmaf: `vmaf` arrives with video quality search/,
+      );
+      expect(errorOf(preset({ raw: "x" }))).toMatch(/presets\.a\.raw: `raw` is not supported/);
+    });
   });
 
   it("requires publicPath to look like a URL prefix", () => {

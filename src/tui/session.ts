@@ -14,6 +14,7 @@ import type {
   VideoOutputResult,
 } from "../core/execute/run.js";
 import { SafeFs } from "../core/fs-safe.js";
+import type { SelectedScorer } from "../core/quality/select.js";
 import { toPosix } from "../core/posix.js";
 import { parseManifest } from "../core/manifest/io.js";
 import { MANIFEST_FILE } from "../core/manifest/types.js";
@@ -47,6 +48,8 @@ export interface SessionOptions {
   toolVersion: string;
   ffmpeg: { found: boolean; installHint: string };
   concurrency?: number;
+  /** Creates the quality scorer for outputs with a perceptual target. */
+  makeScorer?: (fs: SafeFs) => Promise<SelectedScorer>;
   videoEngine?: VideoEngine | null;
   needsFfmpeg?: string;
 }
@@ -107,6 +110,7 @@ export function createSession(options: SessionOptions): Session {
     policy: config.policy,
     exclude: config.exclude,
     ...(config.placeholder ? { placeholder: config.placeholder } : {}),
+    ...(options.makeScorer ? { makeScorer: options.makeScorer } : {}),
   });
 
   return {

@@ -13,7 +13,7 @@ import { BytecutError } from "../../core/errors.js";
 import { parsePlan, serializePlan } from "../../core/plan/schema.js";
 import type { Plan } from "../../core/plan/types.js";
 import { guarded } from "../errors.js";
-import { configArg, createVideoEngine, ffmpegInstallText } from "../shared.js";
+import { configArg, createVideoEngine, ffmpegInstallText, makeScorerFactory } from "../shared.js";
 import { formatFindings, formatPlan, formatSummary } from "../format.js";
 
 const FRAMEWORK_NAMES: Record<string, string> = {
@@ -64,6 +64,11 @@ export default defineCommand({
       description: "Path to the ffmpeg binary (otherwise BYTECUT_FFMPEG, then PATH)",
     },
     ffprobe: { type: "string", description: "Path to the ffprobe binary" },
+    ssimulacra2: {
+      type: "string",
+      description:
+        "Path to a native ssimulacra2 for quality searches (otherwise BYTECUT_SSIMULACRA2, then PATH, then the built-in scorer)",
+    },
   },
   run: guarded(async ({ args }) => {
     const inputs = args._.map(String);
@@ -142,6 +147,7 @@ export default defineCommand({
       publicPath: args["public-path"] ?? project.publicPath,
       policy: config.policy,
       exclude: config.exclude,
+      makeScorer: makeScorerFactory(args.ssimulacra2, config),
       ...(args.preset ? { presetOverride: args.preset } : {}),
       ...(placeholder ? { placeholder } : {}),
       execute: !dryRun,

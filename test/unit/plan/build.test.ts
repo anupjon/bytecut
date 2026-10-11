@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ImageAnalysis, ImageEngine } from "../../../src/core/engines/types.js";
 import { buildPlan, targetWidths } from "../../../src/core/plan/build.js";
 import { fakeAnalysis } from "../../helpers.js";
-import { PHOTO_PRESET } from "../../../src/core/presets/photo.js";
+import { PHOTO_PRESET, type ImagePreset } from "../../../src/core/presets/photo.js";
 
 describe("targetWidths", () => {
   const widths = [640, 1280, 1920];
@@ -154,5 +154,44 @@ describe("buildPlan", () => {
   it("is JSON-serializable data", async () => {
     const plan = await build({ "a.jpg": { width: 700 } });
     expect(JSON.parse(JSON.stringify(plan))).toEqual(plan);
+  });
+});
+
+describe("buildPlan: perceptual search", () => {
+  const searching = { ...PHOTO_PRESET, search: { metric: "ssimulacra2" as const, target: 80 } };
+  const planWith = (analysis: Partial<ImageAnalysis>, preset: ImagePreset = searching) =>
+    buildPlan({
+      files: ["/p/img/a"],
+      projectRoot: "/p",
+      outDir: "/p/out",
+      choosePreset: () => ({ preset, reason: "test" }),
+      engine: fakeEngine({ "": analysis }),
+      readSource: async () => Buffer.from(""),
+    });
+
+  it("copies the preset's target onto every lossy output", async () => {
+    const plan = await planWith({ width: 1400, format: "jpeg" });
+    expect(plan.items[0]!.outputs.every((o) => o.search?.target === 80 && !o.lossless)).toBe(true);
+  });
+
+  it("does not search a lossless output: it is exact", async () => {
+    const plan = await planWith({ width: 1400, format: "png" });
+    const outputs = plan.items[0]!.outputs;
+    const lossless = outputs.filter((o) => o.lossless);
+    expect(lossless.length).toBeGreaterThan(0);
+    expect(lossless.every((o) => o.search === undefined)).toBe(true);
+    expect(outputs.filter((o) => !o.lossless).every((o) => o.search !== undefined)).toBe(true);
+  });
+
+  it("gives each output its own copy, so one cannot change another's", async () => {
+    const plan = await planWith({ width: 1400, format: "jpeg" });
+    const [a, b] = plan.items[0]!.outputs;
+    expect(a!.search).not.toBe(b!.search);
+    expect(a!.search).not.toBe(searching.search);
+  });
+
+  it("a preset without a target plans exactly as before", async () => {
+    const plan = await planWith({ width: 1400, format: "jpeg" }, PHOTO_PRESET);
+    expect(plan.items[0]!.outputs.every((o) => !("search" in o))).toBe(true);
   });
 });

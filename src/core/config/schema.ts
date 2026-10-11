@@ -29,12 +29,12 @@ export const TARGETS = ["low", "balanced", "high", "lossless"] as const;
 export const PLACEHOLDERS = ["dominant-color", "lqip", "blurhash", "none"] as const;
 export const FRAMEWORKS = ["next", "astro", "vite", "static"] as const;
 
-const rejected = (what: string) =>
+const rejected = (what: string, why: string = M9) =>
   z
     .unknown()
     .optional()
     .superRefine((value, ctx) => {
-      if (value !== undefined) ctx.addIssue({ code: "custom", message: `${what} ${M9}` });
+      if (value !== undefined) ctx.addIssue({ code: "custom", message: `${what} ${why}` });
     });
 
 const qualityByFormat = z.object({ avif: quality.optional(), webp: quality.optional() }).strict();
@@ -78,12 +78,51 @@ export const presetSchema = z
       .min(1)
       .optional(),
     crf: crfByCodec.optional(),
+    // perceptual search (images)
+    ssimulacra2: z.number().min(1).max(100).optional(),
+    floor: z.number().min(1).max(100).optional(),
+    maxSize: size.optional(),
     // reserved
-    ssimulacra2: rejected("`ssimulacra2`"),
-    vmaf: rejected("`vmaf`"),
-    raw: rejected("`raw`"),
+    vmaf: rejected("`vmaf`", "arrives with video quality search"),
+    raw: rejected("`raw`", "is not supported; use `target`, `quality` or `crf`"),
   })
-  .strict();
+  .strict()
+  .superRefine((preset, ctx) => {
+    const say = (path: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [path], message });
+    if (preset.floor !== undefined && preset.ssimulacra2 === undefined) {
+      say(
+        "floor",
+        "needs `ssimulacra2`: it is the lowest score allowed when `maxSize` forces quality down",
+      );
+    }
+    if (preset.maxSize !== undefined && preset.ssimulacra2 === undefined) {
+      say(
+        "maxSize",
+        "needs `ssimulacra2`, so there is a quality target to hold while fitting the size",
+      );
+    }
+    if (preset.maxSize !== undefined && preset.floor === undefined) {
+      say(
+        "floor",
+        "is required with `maxSize`: how far quality may drop to fit is a tradeoff to state, not a default",
+      );
+    }
+    if (
+      preset.floor !== undefined &&
+      preset.ssimulacra2 !== undefined &&
+      preset.floor > preset.ssimulacra2
+    ) {
+      say("floor", `must not exceed \`ssimulacra2\` (${preset.ssimulacra2})`);
+    }
+    if (
+      preset.floor !== undefined &&
+      preset.maxSize === undefined &&
+      preset.ssimulacra2 !== undefined
+    ) {
+      say("floor", "only applies with `maxSize`");
+    }
+  });
 
 const knownRuleIds = new Set(ALL_RULES.map((rule) => rule.id));
 
