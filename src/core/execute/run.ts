@@ -82,6 +82,10 @@ export interface VideoOutputResult {
   /** RFC 6381 codecs for `<source type>`. */
   codecs?: string;
   encoder?: string;
+  /** Present when the CRF came from a perceptual search. */
+  search?: { metric: "ssimulacra2" | "vmaf"; target: number };
+  score?: number;
+  scorer?: "wasm" | "native" | "libvmaf";
   status: OutputStatus;
   error?: string;
 }
@@ -431,6 +435,7 @@ export async function runPlan(plan: Plan, options: RunOptions): Promise<RunResul
           signal: options.signal,
           owned,
           warnings: videoWarnings,
+          quality: options.quality,
           onProgress: options.onVideoProgress,
           onOutputDone: options.onVideoOutputDone,
         });

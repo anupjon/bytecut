@@ -112,10 +112,20 @@ describe("config schema", () => {
       expect(errorOf(preset({ ssimulacra2: 101 }))).toMatch(/presets\.a\.ssimulacra2/);
     });
 
-    it("still rejects vmaf and raw, with the reason", () => {
-      expect(errorOf(preset({ vmaf: 90 }))).toMatch(
-        /presets\.a\.vmaf: `vmaf` arrives with video quality search/,
+    it("accepts vmaf, bounded to its range, and not together with ssimulacra2", () => {
+      expect(() => parseConfig(preset({ vmaf: 90 }), "c")).not.toThrow();
+      expect(errorOf(preset({ vmaf: 0 }))).toMatch(/presets\.a\.vmaf/);
+      expect(errorOf(preset({ vmaf: 101 }))).toMatch(/presets\.a\.vmaf/);
+      expect(errorOf(preset({ vmaf: 90, ssimulacra2: 80 }))).toMatch(
+        /presets\.a\.vmaf: cannot be combined with `ssimulacra2`/,
       );
+      // A size cap holds a score, and vmaf is not what an image's cap is judged by.
+      expect(errorOf(preset({ vmaf: 90, maxSize: "10 KB", floor: 60 }))).toMatch(
+        /presets\.a\.(maxSize|floor): needs `ssimulacra2`/,
+      );
+    });
+
+    it("still rejects raw, with the reason", () => {
       expect(errorOf(preset({ raw: "x" }))).toMatch(/presets\.a\.raw: `raw` is not supported/);
     });
   });

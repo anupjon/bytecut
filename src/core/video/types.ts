@@ -1,4 +1,5 @@
 import type { Capabilities } from "../ffmpeg/index.js";
+import type { RgbImage } from "../quality/types.js";
 import type { VideoProbe } from "./probe.js";
 
 export type VideoCodec = "av1" | "h264";
@@ -35,6 +36,39 @@ export interface VideoSampleRequest {
   probe: VideoProbe;
 }
 
+/** A short window of a video, scored at a fixed geometry so two renderings line up. */
+export interface VideoClip {
+  startSec: number;
+  durationSec: number;
+}
+
+export interface VideoFramesRequest extends VideoClip {
+  /** What to read: the source, or an already-encoded output. */
+  source: string;
+  /** Evenly spaced frames to return. */
+  count: number;
+  /** Every frame is scaled to exactly this size (even numbers). */
+  width: number;
+  height: number;
+  /**
+   * Set for the source: apply the output's frame-rate cap and scale first, so the reference is
+   * what the encoder was given. Null for an output, which already has that shape.
+   */
+  pipeline: { probe: VideoProbe; maxWidth: number | null; maxFps: number | null } | null;
+}
+
+export interface VideoVmafRequest extends VideoSampleRequest {
+  /** An already-encoded file to judge instead of encoding the clip at `crf`. */
+  candidate?: string;
+}
+
+/** Encode one clip and decode what came out: quality of a candidate CRF without writing a file. */
+export interface VideoClipEncodeRequest extends VideoSampleRequest {
+  count: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Behind an interface so the executor and audit can be tested with a fake (§3), and so a
  * missing ffmpeg is an ordinary, handled state instead of an exception at every call site.
@@ -53,6 +87,15 @@ export interface VideoEngine {
   ): Promise<void>;
   /** Encoded size in bytes of a short clip, without writing any file. */
   sampleBytes(request: VideoSampleRequest, signal?: AbortSignal): Promise<number>;
+  /** Decoded RGB frames of a clip. Reads only; nothing is written. */
+  frames(request: VideoFramesRequest, signal?: AbortSignal): Promise<RgbImage[]>;
+  /** The frames of `request`'s clip after encoding it at `request.crf`, in memory. */
+  encodedFrames(request: VideoClipEncodeRequest, signal?: AbortSignal): Promise<RgbImage[]>;
+  /**
+   * libvmaf's pooled mean for the clip encoded at `request.crf` against the source, at the
+   * output's resolution. Needs `capabilities().libvmaf`.
+   */
+  vmaf(request: VideoVmafRequest, signal?: AbortSignal): Promise<number>;
   /** One decoded frame as PNG, for the poster. */
   frame(source: string, atSec: number, maxWidth: number | null): Promise<Buffer>;
 }

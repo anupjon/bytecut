@@ -18,6 +18,7 @@ import type { SelectedScorer } from "../core/quality/select.js";
 import { toPosix } from "../core/posix.js";
 import { parseManifest } from "../core/manifest/io.js";
 import { MANIFEST_FILE } from "../core/manifest/types.js";
+import { startCompareServer, type CompareServer } from "../core/compare/index.js";
 import { buildSnippet, originalUrl, snippetFormatFor } from "../core/snippets/index.js";
 import { readFile } from "node:fs/promises";
 import type { ProjectInfo } from "../core/scan/detect.js";
@@ -86,6 +87,13 @@ export interface Session {
     outDir: string,
   ): Promise<{ code: string; hints: string[] } | { error: string }>;
   /**
+   * Starts a localhost before/after page for an optimized file and returns its URL. The
+   * server lives until `stop()`; the page is never opened for the user.
+   */
+  compare(source: string, outDir: string): Promise<{ url: string } | { error: string }>;
+  /** Stops every compare server this session started. */
+  stop(): Promise<void>;
+  /**
    * Makes choices permanent. A JSON (or missing) config is written; a TOML or TS config is
    * code the user owns, so it is left alone and the lines to add are returned instead.
    */
@@ -96,6 +104,7 @@ export interface Session {
 
 export function createSession(options: SessionOptions): Session {
   const { projectRoot, engine } = options;
+  const compareServers: CompareServer[] = [];
   // Replaced after a save, so the next scan sees what was just written.
   let config = options.config ?? resolveConfigData({}, options.project, null);
   const common = (outDir: string) => ({
@@ -230,6 +239,31 @@ export function createSession(options: SessionOptions): Session {
       );
       if (!built) return { error: `${source} has not been optimized yet.` };
       return { code: built.code, hints: built.hints };
+    },
+
+    async compare(source, outDir) {
+      let text: string;
+      try {
+        text = await readFile(resolve(projectRoot, outDir, MANIFEST_FILE), "utf8");
+      } catch {
+        return { error: `No manifest in ${outDir} yet: run the optimizer first.` };
+      }
+      try {
+        const server = await startCompareServer({
+          projectRoot,
+          outDir,
+          manifest: parseManifest(text),
+          source,
+        });
+        compareServers.push(server);
+        return { url: server.url };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+
+    async stop() {
+      await Promise.all(compareServers.splice(0).map((s) => s.close()));
     },
 
     async saveChoices(choices) {

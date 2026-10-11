@@ -22,6 +22,11 @@ export const COMMANDS: CommandInfo[] = [
     description: "Copy the <picture>/<video> markup for an optimized file",
   },
   {
+    name: "compare",
+    usage: "/compare @file",
+    description: "Serve a before/after page for an optimized file on localhost",
+  },
+  {
     name: "save",
     usage: "/save",
     description: "Keep this session's preset and folder choices in the project config",

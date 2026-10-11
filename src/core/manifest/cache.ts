@@ -83,9 +83,15 @@ import type { ManifestVideoOutput, ManifestVideoSource } from "./types.js";
 function sameVideoParams(planned: PlannedMediaOutput, r: ManifestVideoOutput): boolean {
   if (planned.role !== r.role || planned.path !== r.path || planned.width !== r.width) return false;
   if (planned.role === "video") {
+    // A searched output is valid for the target it was searched for, wherever the CRF landed.
+    const search = planned.search;
+    const sameSearch =
+      search === undefined
+        ? r.search === undefined && r.crf === planned.crf
+        : r.search?.metric === search.metric && r.search.target === search.target;
     return (
+      sameSearch &&
       r.codec === planned.codec &&
-      r.crf === planned.crf &&
       r.speed === planned.speed &&
       r.maxWidth === planned.maxWidth &&
       r.maxFps === planned.maxFps &&

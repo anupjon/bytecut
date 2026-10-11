@@ -75,7 +75,10 @@ export function formatPlan(plan: Plan, cache?: Map<string, CacheState>): string 
     for (const out of video.outputs) {
       if (out.role === "video") {
         const audio = out.audio === "strip" ? "no audio" : `audio ${out.audioBitrate}`;
-        lines.push(`  ${out.path}  (${out.codec}, ${out.width}w, crf ${out.crf}, ${audio})`);
+        const mode = out.search
+          ? `${out.search.metric} >= ${out.search.target} (starts at crf ${out.crf})`
+          : `crf ${out.crf}`;
+        lines.push(`  ${out.path}  (${out.codec}, ${out.width}w, ${mode}, ${audio})`);
       } else {
         lines.push(`  ${out.path}  (poster, ${out.width}w)`);
       }
@@ -129,6 +132,12 @@ function searchNote(out: OutputResult): string {
   return `  · q${out.quality} · ssimulacra2 ${out.score.toFixed(1)}${stepped}`;
 }
 
+/** `  · crf 41 · vmaf 93.2`: what the search landed on and the worst clip's score. */
+function videoSearchNote(out: VideoOutputResult): string {
+  if (!out.search || out.score === undefined || out.crf === undefined) return "";
+  return `  · crf ${out.crf} · ${out.search.metric} ${out.score.toFixed(1)}`;
+}
+
 function videoOutputLine(out: VideoOutputResult, sourceBytes: number): string {
   const label = out.role === "poster" ? "poster" : (out.codec ?? "mp4");
   const head = `  ${label.padEnd(6)} ${String(out.width).padStart(5)}w`;
@@ -137,9 +146,9 @@ function videoOutputLine(out: VideoOutputResult, sourceBytes: number): string {
     case "written":
       return out.role === "poster"
         ? `${head}  ${size.padStart(9)}`
-        : `${head}  ${size.padStart(9)}  ${percentChange(sourceBytes, out.bytes)}`;
+        : `${head}  ${size.padStart(9)}  ${percentChange(sourceBytes, out.bytes)}${videoSearchNote(out)}`;
     case "unchanged":
-      return `${head}  ${size.padStart(9)}  (already on disk)`;
+      return `${head}  ${size.padStart(9)}  (already on disk)${videoSearchNote(out)}`;
     case "already-optimal":
       return `${head}  already optimal (${size} ≥ source), not written`;
     case "protected":

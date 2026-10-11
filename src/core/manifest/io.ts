@@ -66,6 +66,12 @@ const videoOutputSchema = z
     codecs: z.string().optional(),
     encoder: z.string(),
     status: z.enum(["written", "already-optimal", "stale"]),
+    search: z
+      .object({ metric: z.enum(["ssimulacra2", "vmaf"]), target: z.number() })
+      .strict()
+      .optional(),
+    score: z.number().optional(),
+    scorer: z.enum(["wasm", "native", "libvmaf"]).optional(),
   })
   .strict();
 

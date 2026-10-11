@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildClipEncodeArgs,
   buildEncodeArgs,
   buildFrameArgs,
+  buildFramesArgs,
+  buildPipedFramesArgs,
   buildSampleArgs,
+  buildVmafArgs,
+  parseVmafScore,
   encoderArgs,
   evenDown,
   needsFpsCap,
@@ -186,5 +191,106 @@ describe("progressFraction", () => {
     expect(progressFraction("progress=end\n", 10)).toBeNull();
     expect(progressFraction("out_time_us=N/A\n", 10)).toBeNull();
     expect(progressFraction("out_time_us=5\n", 0)).toBeNull();
+  });
+});
+
+describe("quality search arguments", () => {
+  const clip = {
+    source: "/p/in.mp4",
+    encoder: "libx264" as const,
+    crf: 30,
+    speed: "slow",
+    maxWidth: 1280,
+    maxFps: 30,
+    startSec: 4,
+    durationSec: 2,
+    probe: probe(),
+  };
+
+  it("encodes a clip to Matroska on stdout, so timestamps survive", () => {
+    const a = buildClipEncodeArgs(clip);
+    expect(a.slice(-3)).toEqual(["-f", "matroska", "pipe:1"]);
+    // Same video settings as the real output, and still no audio and no file.
+    expect(a[a.indexOf("-crf") + 1]).toBe("30");
+    expect(a).toContain("-an");
+    expect(a.filter((x) => x === "-f")).toHaveLength(1);
+  });
+
+  it("decodes the reference through the output's own fps cap and scale, then to the score size", () => {
+    const a = buildFramesArgs({
+      source: "/p/in.mp4",
+      startSec: 4,
+      durationSec: 2,
+      count: 4,
+      width: 512,
+      height: 288,
+      pipeline: { probe: probe(), maxWidth: 1280, maxFps: 30 },
+    });
+    const vf = a[a.indexOf("-vf") + 1]!;
+    expect(vf).toBe(
+      "fps=30,scale=1280:-2:flags=lanczos,format=yuv420p,fps=2,scale=512:288:flags=area",
+    );
+    expect(a.slice(-8)).toEqual([
+      "-frames:v",
+      "4",
+      "-an",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      "pipe:1",
+    ]);
+    expect(a[a.indexOf("-ss") + 1]).toBe("4");
+    expect(a[a.indexOf("-t") + 1]).toBe("2");
+  });
+
+  it("reads an output as it is, with the same frame selection and size", () => {
+    const a = buildFramesArgs({
+      source: "/out/v.mp4",
+      startSec: 4,
+      durationSec: 2,
+      count: 4,
+      width: 512,
+      height: 288,
+      pipeline: null,
+    });
+    expect(a[a.indexOf("-vf") + 1]).toBe("fps=2,scale=512:288:flags=area");
+  });
+
+  it("decodes the piped clip with the same selection and size as the reference", () => {
+    const a = buildPipedFramesArgs({ ...clip, count: 4, width: 512, height: 288 });
+    expect(a.slice(a.indexOf("-f"), a.indexOf("-f") + 4)).toEqual([
+      "-f",
+      "matroska",
+      "-i",
+      "pipe:0",
+    ]);
+    expect(a[a.indexOf("-vf") + 1]).toBe("fps=2,scale=512:288:flags=area");
+  });
+
+  it("builds a libvmaf graph: distorted first, reference second, same size", () => {
+    const a = buildVmafArgs(clip, 1280, 720);
+    const graph = a[a.indexOf("-lavfi") + 1]!;
+    expect(graph).toContain("[dist][ref]libvmaf");
+    expect(graph).toContain("scale=1280:720");
+    expect(graph.indexOf("[0:v]")).toBeLessThan(graph.indexOf("[1:v]"));
+    expect(a).toContain("pipe:0");
+    expect(a.slice(-3)).toEqual(["-f", "null", "-"]);
+  });
+
+  it("judges an existing file instead of piping when given a candidate", () => {
+    const a = buildVmafArgs({ ...clip, candidate: "/out/v.mp4" }, 1280, 720);
+    expect(a).not.toContain("pipe:0");
+    expect(a[a.lastIndexOf("-i") + 1]).toBe("/out/v.mp4");
+  });
+
+  it("reads the pooled VMAF score from ffmpeg's log", () => {
+    const log = [
+      "[libvmaf @ 0x55d] VMAF score: 93.521434",
+      "frame=   48 fps=120 q=-0.0 Lsize=N/A time=00:00:02.00",
+    ].join("\n");
+    expect(parseVmafScore(log)).toBeCloseTo(93.521434, 6);
+    expect(parseVmafScore("[libvmaf] VMAF score: 80.1\n[libvmaf] VMAF score: 91.5")).toBe(91.5);
+    expect(parseVmafScore("Error: No such filter: 'libvmaf'")).toBeNull();
   });
 });

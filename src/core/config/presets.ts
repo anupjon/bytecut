@@ -23,11 +23,12 @@ const IMAGE_ONLY = [
   "effort",
   "lossless",
   "priority",
-  "ssimulacra2",
   "floor",
   "maxSize",
 ] as const;
 const VIDEO_ONLY = ["audio", "maxWidth", "maxFps", "codecs", "crf"] as const;
+/** Fields that name a metric target; `vmaf` is video-only because libvmaf compares video. */
+const METRICS = ["ssimulacra2", "vmaf"] as const;
 
 function fail(message: string): never {
   throw new BytecutError("CONFIG_INVALID", `presets: ${message}`);
@@ -38,6 +39,9 @@ function applyImage(name: string, base: ImagePreset, def: PresetConfig): ImagePr
     if (def[key] !== undefined) {
       fail(`"${name}" extends an image preset, so \`${key}\` (a video setting) does not apply.`);
     }
+  }
+  if (def.vmaf !== undefined) {
+    fail(`"${name}" extends an image preset, so \`vmaf\` (a video metric) does not apply.`);
   }
   const next: ImagePreset = {
     ...base,
@@ -97,10 +101,13 @@ function applyVideo(name: string, base: VideoPreset, def: PresetConfig): VideoPr
   if (def.audio) next.audio = def.audio;
   if (def.maxWidth !== undefined) next.maxWidth = def.maxWidth;
   if (def.maxFps !== undefined) next.maxFps = def.maxFps;
+  if (def.ssimulacra2 !== undefined)
+    next.search = { metric: "ssimulacra2", target: def.ssimulacra2 };
+  if (def.vmaf !== undefined) next.search = { metric: "vmaf", target: def.vmaf };
   return next;
 }
 
-const CHANGE_KEYS = [...IMAGE_ONLY, ...VIDEO_ONLY, "target"] as const;
+const CHANGE_KEYS = [...IMAGE_ONLY, ...VIDEO_ONLY, ...METRICS, "target"] as const;
 
 /**
  * Builds the catalog: built-ins plus the config's presets. A preset named like a built-in

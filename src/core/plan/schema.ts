@@ -72,6 +72,10 @@ const videoOutputSchema = z.discriminatedUnion("role", [
       maxFps: z.number().positive().nullable(),
       audio: z.enum(["strip", "keep"]),
       audioBitrate: z.string().regex(/^\d+k$/),
+      search: z
+        .object({ metric: z.enum(["ssimulacra2", "vmaf"]), target: z.number().min(1).max(100) })
+        .strict()
+        .optional(),
     })
     .strict(),
   z

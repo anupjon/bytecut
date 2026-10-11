@@ -57,5 +57,10 @@ export async function runTui(options: RunTuiOptions): Promise<void> {
     />,
     { exitOnCtrlC: false },
   );
-  await instance.waitUntilExit();
+  try {
+    await instance.waitUntilExit();
+  } finally {
+    // A compare server must not outlive the session that started it.
+    await session.stop();
+  }
 }

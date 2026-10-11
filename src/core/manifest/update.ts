@@ -119,6 +119,9 @@ function toManifestVideoOutput(out: VideoOutputResult, publicPath: string): Mani
     ...(out.codecs ? { codecs: out.codecs } : {}),
     encoder: out.encoder ?? "unknown",
     status: out.status === "already-optimal" ? "already-optimal" : "written",
+    ...(out.search ? { search: out.search } : {}),
+    ...(out.score !== undefined ? { score: out.score } : {}),
+    ...(out.scorer ? { scorer: out.scorer } : {}),
   };
 }
 

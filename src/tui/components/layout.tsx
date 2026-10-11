@@ -62,7 +62,7 @@ export function Help(): ReactNode {
       <Text>
         /audit /optimize [@file…] /preset {"<name>"} [@file…] /out {"<dir>"}
       </Text>
-      <Text>/select all|none|warn /snippet @file /save /doctor /help /quit</Text>
+      <Text>/select all|none|warn /snippet @file /compare @file /save /doctor /help /quit</Text>
       <Text dimColor>esc closes this</Text>
     </Box>
   );

@@ -101,6 +101,12 @@ export interface ManifestVideoOutput {
   /** Encoder actually used, with the ffmpeg version. */
   encoder: string;
   status: ManifestOutputStatus;
+  /** Present when the CRF was found by a perceptual search; these, not `crf`, decide the cache. */
+  search?: { metric: "ssimulacra2" | "vmaf"; target: number };
+  /** The worst sampled clip's score for this output, as the search measured it. */
+  score?: number;
+  /** Which implementation measured it: `libvmaf` is ffmpeg's own filter. */
+  scorer?: "wasm" | "native" | "libvmaf";
 }
 
 export interface ManifestVideoSource {

@@ -15,6 +15,15 @@ import { readVideoCodecString } from "../video/codecs.js";
 import { AbortedError } from "../video/ffmpeg-engine.js";
 import type { VideoProbe } from "../video/probe.js";
 import type { EncoderName, VideoEngine } from "../video/types.js";
+import {
+  CONFIRM_STEP,
+  CRF_RANGE,
+  MAX_CONFIRM_BUMPS,
+  createVideoSearcher,
+  scoreGeometry,
+  type VideoSearcher,
+} from "../quality/video-search.js";
+import type { QualityScorer } from "../quality/types.js";
 import type { OutputStatus, VideoItemResult, VideoOutputResult } from "./run.js";
 
 export interface VideoLaneFs {
@@ -37,6 +46,8 @@ export interface VideoRunContext {
   /** path → sha256 of every file the manifest says bytecut wrote. */
   owned: Map<string, string>;
   warnings: Set<string>;
+  /** Perceptual search. Absent: searched outputs use their fixed CRF, with a warning. */
+  quality?: { scorer(): Promise<QualityScorer> } | undefined;
   onProgress?: ((source: string, path: string, fraction: number) => void) | undefined;
   onOutputDone?: ((source: string, output: VideoOutputResult) => void) | undefined;
 }
@@ -72,9 +83,14 @@ const evenHeight = (probe: VideoProbe, width: number) =>
 function sameParams(planned: PlannedMediaOutput, r: ManifestVideoOutput): boolean {
   if (planned.role !== r.role || planned.width !== r.width) return false;
   if (planned.role === "video") {
+    const search = planned.search;
+    const sameSearch =
+      search === undefined
+        ? r.search === undefined && r.crf === planned.crf
+        : r.search?.metric === search.metric && r.search.target === search.target;
     return (
+      sameSearch &&
       r.codec === planned.codec &&
-      r.crf === planned.crf &&
       r.speed === planned.speed &&
       r.maxWidth === planned.maxWidth &&
       r.maxFps === planned.maxFps &&
@@ -151,9 +167,18 @@ export async function runVideoItem(
   let encodedAny = false;
   let failed = false;
 
+  // An output made with a fixed CRF because its metric was unavailable is worth redoing once
+  // the metric is: it carries `search` but no `score`.
+  const searchable = (metric: "ssimulacra2" | "vmaf") =>
+    metric === "vmaf" ? caps.libvmaf : ctx.quality !== undefined;
+  const retrySearch = new Set<string>();
+  for (const r of entry?.outputs ?? []) {
+    if (r.search && r.score === undefined && searchable(r.search.metric)) retrySearch.add(r.path);
+  }
+
   // Fast path: everything that can exist already does, with matching hashes.
   const noForce = !ctx.force;
-  if (noForce) {
+  if (noForce && retrySearch.size === 0) {
     const state = await checkVideoCache(item, entry, hashOutput, unavailable);
     if (state.kind === "hit") {
       for (const planned of item.outputs) {
@@ -185,6 +210,7 @@ export async function runVideoItem(
       sameSource &&
       prior &&
       prior.status === "written" &&
+      !retrySearch.has(planned.path) &&
       sameParams(planned, prior)
     ) {
       const actual = await hashOutput(planned.path);
@@ -207,10 +233,19 @@ export async function runVideoItem(
         record(unavailableResult(planned, ctx));
         continue;
       }
-      const result = await makeVideo(planned, item, sourcePath, probe, encoder, ctx, encoderLabel);
+      const result = await makeVideo(
+        planned,
+        item,
+        sourcePath,
+        probe,
+        encoder,
+        caps.libvmaf,
+        ctx,
+        encoderLabel,
+      );
       record(result.output);
       if (result.wrote) encodedAny = true;
-      if (result.output.status === "failed") failed = true;
+      if (result.output.status === "failed" || result.output.status === "unmet") failed = true;
     } catch (error) {
       if (error instanceof AbortedError || ctx.signal?.aborted) {
         record(blank(planned, "cancelled"));
@@ -271,6 +306,9 @@ function fromRecorded(r: ManifestVideoOutput): VideoOutputResult {
     ...(r.effort !== undefined ? { effort: r.effort } : {}),
     ...(r.at !== undefined ? { at: r.at } : {}),
     ...(r.codecs ? { codecs: r.codecs } : {}),
+    ...(r.search ? { search: r.search } : {}),
+    ...(r.score !== undefined ? { score: r.score } : {}),
+    ...(r.scorer ? { scorer: r.scorer } : {}),
     encoder: r.encoder,
     status: r.status === "already-optimal" ? "already-optimal" : "unchanged",
   };
@@ -299,33 +337,161 @@ async function existingPolicy(
   return null;
 }
 
+type Searched =
+  /** No search planned, or it could not run: encode at the planned CRF. */
+  | { kind: "fixed"; skipped: boolean }
+  | {
+      kind: "found";
+      crf: number;
+      score: number;
+      scorer: "wasm" | "native" | "libvmaf";
+      searcher: VideoSearcher;
+    }
+  | { kind: "unmet"; reason: string };
+
+/** Share of a video output's progress bar that the CRF search takes. */
+const SEARCH_SHARE = 0.4;
+const EXPECTED_PROBES = 7;
+
+async function searchCrf(
+  planned: PlannedVideoOutput,
+  item: VideoPlanItem,
+  sourcePath: string,
+  probe: VideoProbe,
+  encoder: EncoderName,
+  hasLibvmaf: boolean,
+  ctx: VideoRunContext,
+): Promise<Searched> {
+  const search = planned.search;
+  if (!search) return { kind: "fixed", skipped: false };
+  const skip = (why: string): Searched => {
+    ctx.warnings.add(`${planned.path}: ${why}; used the fixed CRF ${planned.crf}`);
+    return { kind: "fixed", skipped: true };
+  };
+
+  let scorer: QualityScorer | undefined;
+  if (search.metric === "vmaf") {
+    if (!hasLibvmaf) return skip("libvmaf is missing, so the VMAF search was skipped");
+  } else {
+    if (!ctx.quality) return skip("no quality scorer is available, so the search was skipped");
+    try {
+      scorer = await ctx.quality.scorer();
+    } catch (error) {
+      return skip(`the quality scorer could not start (${message(error)})`);
+    }
+  }
+  const { width, height } = scoreGeometry(probe, planned.maxWidth);
+  if (search.metric === "ssimulacra2" && (width < 8 || height < 8)) {
+    return skip("the video is too small to score");
+  }
+
+  const searcher = createVideoSearcher({
+    engine: ctx.engine,
+    metric: search.metric,
+    target: search.target,
+    scorer,
+    source: sourcePath,
+    probe,
+    codec: planned.codec,
+    encoder,
+    speed: planned.speed,
+    maxWidth: planned.maxWidth,
+    maxFps: planned.maxFps,
+    startCrf: planned.crf,
+    signal: ctx.signal,
+    onProbe: () => {
+      probes++;
+      ctx.onProgress?.(
+        item.source,
+        planned.path,
+        SEARCH_SHARE * Math.min(1, probes / EXPECTED_PROBES),
+      );
+    },
+  });
+  let probes = 0;
+  const outcome = await searcher.find();
+  if (!outcome.ok) {
+    return {
+      kind: "unmet",
+      reason: `${search.metric} reached only ${outcome.bestScore.toFixed(1)} at crf ${CRF_RANGE[planned.codec].lo}, below the target ${search.target}`,
+    };
+  }
+  return {
+    kind: "found",
+    crf: outcome.crf,
+    score: outcome.score,
+    scorer: search.metric === "vmaf" ? "libvmaf" : scorer!.kind,
+    searcher,
+  };
+}
+
 async function makeVideo(
   planned: PlannedVideoOutput,
   item: VideoPlanItem,
   sourcePath: string,
   probe: VideoProbe,
   encoder: EncoderName,
+  hasLibvmaf: boolean,
   ctx: VideoRunContext,
   encoderLabel: (name: string) => string,
 ): Promise<{ output: VideoOutputResult; wrote: boolean }> {
+  const searched = await searchCrf(planned, item, sourcePath, probe, encoder, hasLibvmaf, ctx);
+  if (searched.kind === "unmet") {
+    ctx.warnings.add(`${planned.path}: ${searched.reason}; nothing was written`);
+    return {
+      output: {
+        ...blank(planned, "unmet"),
+        codec: planned.codec,
+        error: searched.reason,
+      },
+      wrote: false,
+    };
+  }
+  const found = searched.kind === "found" ? searched : null;
+  const range = CRF_RANGE[planned.codec];
+  let crf = found ? found.crf : planned.crf;
+  let score = found?.score;
+  const base = found ? SEARCH_SHARE : 0;
+
   const temp = await ctx.fs.reserveTemp(planned.path);
   try {
-    await ctx.engine.encode(
-      {
-        source: sourcePath,
-        output: temp,
-        encoder,
-        crf: planned.crf,
-        speed: planned.speed,
-        maxWidth: planned.maxWidth,
-        maxFps: planned.maxFps,
-        audio: planned.audio,
-        audioBitrate: planned.audioBitrate,
-        probe,
-      },
-      (fraction) => ctx.onProgress?.(item.source, planned.path, fraction),
-      ctx.signal ?? new AbortController().signal,
-    );
+    for (let bumps = 0; ; bumps++) {
+      await ctx.engine.encode(
+        {
+          source: sourcePath,
+          output: temp,
+          encoder,
+          crf,
+          speed: planned.speed,
+          maxWidth: planned.maxWidth,
+          maxFps: planned.maxFps,
+          audio: planned.audio,
+          audioBitrate: planned.audioBitrate,
+          probe,
+        },
+        (fraction) => ctx.onProgress?.(item.source, planned.path, base + (1 - base) * fraction),
+        ctx.signal ?? new AbortController().signal,
+      );
+      // A whole-video search measured exactly this encode; a sampled one is checked on the
+      // real output, because rate control over the full length can differ from a clip's.
+      if (!found || found.searcher.whole) break;
+      const measured = await found.searcher.confirm(temp, crf);
+      if (measured >= planned.search!.target) {
+        score = measured;
+        break;
+      }
+      if (bumps >= MAX_CONFIRM_BUMPS || crf - CONFIRM_STEP < range.lo) {
+        await ctx.fs.discardTemp(temp);
+        const reason = `${planned.search!.metric} was ${measured.toFixed(1)} on the full encode at crf ${crf}, below the target ${planned.search!.target}`;
+        ctx.warnings.add(`${planned.path}: ${reason}; nothing was written`);
+        return {
+          output: { ...blank(planned, "unmet"), codec: planned.codec, error: reason },
+          wrote: false,
+        };
+      }
+      crf -= CONFIRM_STEP;
+    }
+
     const { size } = await stat(temp);
     // Exact codec string from the file itself, plus AAC-LC when audio was kept.
     const video = await readVideoCodecString(temp).catch(() => null);
@@ -344,12 +510,18 @@ async function makeVideo(
       height: evenHeight(probe, planned.width),
       fps: Math.round(fps * 100) / 100,
       bytes: size,
-      crf: planned.crf,
+      crf,
       speed: planned.speed,
       maxWidth: planned.maxWidth,
       maxFps: planned.maxFps,
       audio: planned.audio,
       ...(codecs ? { codecs } : {}),
+      // Recorded even when the search could not run, so the cache recognises the output; a
+      // missing score is what marks it as worth searching once the metric is available.
+      ...(planned.search ? { search: planned.search } : {}),
+      ...(score !== undefined && found
+        ? { score: Math.round(score * 100) / 100, scorer: found.scorer }
+        : {}),
       encoder: encoderLabel(encoder),
       status: "written",
     };

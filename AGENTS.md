@@ -55,7 +55,7 @@ small, well-maintained packages; avoid anything that needs a postinstall downloa
 ```
 TUI (Ink)            Headless CLI (flags, -y)
       └──────────┬──────────┘
-            Commands layer        (audit, optimize, check, init, explain, doctor)
+            Commands layer        (audit, optimize, check, init, explain, snippet, compare, doctor)
                  │
      Scanner → Prober → Classifier → Planner
                  │            (preset per file, outputs, estimates)
@@ -136,9 +136,10 @@ to preset names (first match wins; a pattern without `/` matches the name at any
 entries say what they `extends` (a built-in name without `extends` changes that built-in) and may set
 `target`, `widths`, `formats`, `quality`, `effort`, `lossless`, `priority` (images) or `audio`,
 `maxWidth`, `maxFps`, `codecs`, `crf` (video). `budgets` takes `maxFileSize` / `maxTotalSize` as bytes
-or `"250 KB"`. `vmaf` and `raw` are rejected until M9's later stages. On image presets `ssimulacra2` (lowest
-acceptable score), `maxSize` (cap per output) and `floor` (lowest score while fitting the cap; required
-with `maxSize`) turn on a perceptual quality search; `ssimulacra2Path` is an optional native scorer.
+or `"250 KB"`. `raw` is rejected. On image presets `ssimulacra2` (lowest acceptable score), `maxSize` (cap per
+output) and `floor` (lowest score while fitting the cap; required with `maxSize`) turn on a perceptual
+quality search; on video presets `ssimulacra2` or `vmaf` (one per preset) search the CRF on sampled
+clips; `ssimulacra2Path` is an optional native scorer.
 
 ### Presets
 Built-ins: `photo`, `hero`, `icon`, `svg`, `background-video`, `content-video`, `gif-to-video`.
@@ -169,7 +170,7 @@ height, bytes, sha256?, lossless, quality, effort, encoder, status` where `statu
 `already-optimal` (no file, no sha256) or `stale`. Keys are sorted and there are no timestamps, so an
 unchanged run leaves the file byte-identical. Sources and videos may also carry `priority` (an LCP candidate: snippets emit `fetchpriority="high"`
 and no lazy loading) and a `placeholder` (`dominant-color`, `lqip` or `blurhash`); video outputs carry
-`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive. Image outputs found by a perceptual search also carry `search` (target, floor, size cap, and `plannedPath` when the width was stepped down), `score` and `scorer`.
+`codecs`, the exact RFC 6381 string read from the file. All three are optional and additive. Image outputs found by a perceptual search also carry `search` (target, floor, size cap, and `plannedPath` when the width was stepped down), `score` and `scorer`; video outputs carry `search` (`metric`, `target`), `score` and `scorer` (`wasm`, `native` or `libvmaf`).
 `outputs` lists everything bytecut owns for that source,
 including orphans, which is what makes them deletable under §6.3.
 
@@ -466,3 +467,8 @@ Keep this list accurate as scripts change.
 - 2026-10-10 — `floor` is required whenever `maxSize` is set (confirmed with you) — how far quality may fall is a tradeoff the config must state; no default can silently degrade images.
 - 2026-10-10 — The search samples the median-detail 512 px tile and then proves the answer on the full-size output — the busiest tile over-spends on flat images and the flattest under-spends on textured ones; the full-size score is the one that counts.
 - 2026-10-10 — Stepping down never goes below half the planned width or the next smaller planned width, and an unmet constraint fails the item (exit 1) without writing — a picture half as wide is not the one that was asked for, and a configured limit that is silently exceeded is worse than a reported failure.
+- 2026-10-11 — Video quality search encodes sampled clips in memory (Matroska on stdout, decoded back through a pipe) and writes no file — keeps §3's single write module and leaves nothing to clean up on cancel.
+- 2026-10-11 — A CRF's score is its worst sampled clip, and an unreachable video target fails the item without writing (confirmed with you) — one hard scene is what a viewer notices, and a configured target silently missed is worse than a reported failure.
+- 2026-10-11 — `vmaf` uses ffmpeg's own `libvmaf` and, without it, falls back to the fixed CRF with a warning and records `search` without a `score` (per §4's "no libvmaf" rule) — the output still caches, and is searched once the filter exists.
+- 2026-10-11 — The same scorer selection serves images and video (confirmed with you) — one flag, one lazy start, native when present and WASM otherwise.
+- 2026-10-11 — `/compare` is a loopback-only read-only server with an unguessable path token, index-addressed files and a Host check, serving one self-contained page (confirmed with you: images and video) — it cannot be reached from another machine or a web page, and a request can never name a path.

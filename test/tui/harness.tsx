@@ -69,6 +69,7 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     review: [] as Array<{ sources: string[]; presets: Record<string, string>; outDir: string }>,
     run: [] as Array<{ sources: string[]; presets: Record<string, string>; outDir: string }>,
     snippet: [] as string[],
+    compare: [] as string[],
     save: [] as Array<Parameters<Session["saveChoices"]>[0]>,
   };
   const m = over.model ?? model([row("a.jpg"), row("b.jpg"), row("c.jpg", { severity: "info" })]);
@@ -101,6 +102,11 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     async validateOutDir() {
       return null;
     },
+    async compare(source) {
+      calls.compare.push(source);
+      return { url: `http://127.0.0.1:4000/token/` };
+    },
+    async stop() {},
     async saveChoices(choices) {
       calls.save.push(choices);
       return { kind: "written", file: "bytecut.config.json", created: true };

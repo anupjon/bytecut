@@ -2,6 +2,12 @@ import type { VideoCodec } from "../video/types.js";
 
 export type VideoPresetName = "background-video" | "content-video" | "gif-to-video";
 
+/** A perceptual target: the CRF is searched, on sampled clips, instead of fixed. */
+export interface VideoSearch {
+  metric: "ssimulacra2" | "vmaf";
+  target: number;
+}
+
 export interface VideoPreset {
   /** A built-in name, or the name of a preset defined in the config. */
   name: string;
@@ -12,8 +18,10 @@ export interface VideoPreset {
   audioBitrate: string;
   maxWidth: number | null;
   maxFps: number | null;
-  /** Fixed constant-rate-factor per codec: perceptual search is the M9 stretch goal. */
+  /** Constant-rate-factor per codec. */
   crf: Record<VideoCodec, number>;
+  /** When set, `crf` is only the search's starting point and the fallback without a metric. */
+  search?: VideoSearch;
   /** SVT-AV1 `-preset` (6 = slower, smaller) and x264 preset name. */
   speed: Record<VideoCodec, string>;
   poster: {

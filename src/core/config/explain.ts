@@ -237,6 +237,11 @@ export function formatExplanation(e: Explanation): string {
       `  cap:      ${r.maxWidth ? `${r.maxWidth}px wide` : "no width cap"}, ${r.maxFps ? `${r.maxFps} fps` : "no fps cap"}`,
     );
     lines.push(`  crf:      av1 ${r.crf.av1}, h264 ${r.crf.h264}`);
+    if (r.search) {
+      lines.push(
+        `  search:   ${r.search.metric} >= ${r.search.target} on the worst of 3 sampled clips (crf above is the starting point)`,
+      );
+    }
   }
   if (e.outputs.length > 0) {
     lines.push(`  outputs:  ${e.outDir}/`);

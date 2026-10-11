@@ -78,18 +78,21 @@ export const presetSchema = z
       .min(1)
       .optional(),
     crf: crfByCodec.optional(),
-    // perceptual search (images)
+    // perceptual search: images and video (`floor` and `maxSize` are image-only)
     ssimulacra2: z.number().min(1).max(100).optional(),
+    vmaf: z.number().min(1).max(100).optional(),
     floor: z.number().min(1).max(100).optional(),
     maxSize: size.optional(),
     // reserved
-    vmaf: rejected("`vmaf`", "arrives with video quality search"),
     raw: rejected("`raw`", "is not supported; use `target`, `quality` or `crf`"),
   })
   .strict()
   .superRefine((preset, ctx) => {
     const say = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
+    if (preset.vmaf !== undefined && preset.ssimulacra2 !== undefined) {
+      say("vmaf", "cannot be combined with `ssimulacra2`: a preset searches for one metric");
+    }
     if (preset.floor !== undefined && preset.ssimulacra2 === undefined) {
       say(
         "floor",

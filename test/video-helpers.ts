@@ -2,10 +2,14 @@ import { writeFile } from "node:fs/promises";
 import type { Capabilities } from "../src/core/ffmpeg/index.js";
 import { AbortedError } from "../src/core/video/ffmpeg-engine.js";
 import type { VideoProbe } from "../src/core/video/probe.js";
+import type { RgbImage } from "../src/core/quality/types.js";
 import type {
+  VideoClipEncodeRequest,
   VideoEncodeRequest,
   VideoEngine,
+  VideoFramesRequest,
   VideoSampleRequest,
+  VideoVmafRequest,
 } from "../src/core/video/types.js";
 
 export const ALL_ENCODERS: Capabilities = {
@@ -44,7 +48,19 @@ export interface FakeVideoOptions {
   delayMs?: number;
   sampleBytes?: (request: VideoSampleRequest) => number;
   versions?: Record<string, string>;
+  /** Decoded frames of a clip; defaults to a flat grey frame per requested frame. */
+  frames?: (request: VideoFramesRequest) => RgbImage[];
+  /** Frames of a clip encoded at `request.crf`. */
+  encodedFrames?: (request: VideoClipEncodeRequest) => RgbImage[];
+  vmaf?: (request: VideoVmafRequest) => number;
 }
+
+export const greyFrames = (count: number, width: number, height: number, level = 128): RgbImage[] =>
+  Array.from({ length: count }, () => ({
+    data: new Uint8Array(width * height * 3).fill(level),
+    width,
+    height,
+  }));
 
 /** A VideoEngine that records what it was asked and writes deterministic fake outputs. */
 export function fakeVideoEngine(options: FakeVideoOptions = {}) {
@@ -52,6 +68,9 @@ export function fakeVideoEngine(options: FakeVideoOptions = {}) {
     encodes: [] as VideoEncodeRequest[],
     samples: [] as VideoSampleRequest[],
     frames: [] as Array<{ source: string; at: number }>,
+    clipFrames: [] as VideoFramesRequest[],
+    encodedFrames: [] as VideoClipEncodeRequest[],
+    vmaf: [] as VideoVmafRequest[],
     probes: [] as string[],
     aborted: 0,
   };
@@ -63,6 +82,23 @@ export function fakeVideoEngine(options: FakeVideoOptions = {}) {
     },
     async versions() {
       return caps ? { ffmpeg: "6.1.1", ...options.versions } : {};
+    },
+    async frames(request) {
+      calls.clipFrames.push(request);
+      return options.frames
+        ? options.frames(request)
+        : greyFrames(request.count, request.width, request.height);
+    },
+    async encodedFrames(request) {
+      calls.encodedFrames.push(request);
+      return options.encodedFrames
+        ? options.encodedFrames(request)
+        : greyFrames(request.count, request.width, request.height);
+    },
+    async vmaf(request) {
+      calls.vmaf.push(request);
+      if (!options.vmaf) throw new Error("vmaf not configured");
+      return options.vmaf(request);
     },
     async probe(source) {
       calls.probes.push(source);

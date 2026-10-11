@@ -47,6 +47,8 @@ export interface PlannedVideoOutput {
   maxFps: number | null;
   audio: "strip" | "keep";
   audioBitrate: string;
+  /** Find the CRF by perceptual search; `crf` is then the starting point and the fallback. */
+  search?: { metric: "ssimulacra2" | "vmaf"; target: number };
 }
 
 export interface PlannedPosterOutput {

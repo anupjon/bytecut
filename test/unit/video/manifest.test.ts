@@ -178,3 +178,54 @@ describe("checkVideoCache", () => {
     expect(looked).not.toContain(av1.path);
   });
 });
+
+describe("checkVideoCache with a perceptual search", () => {
+  const searched = (over: Partial<PlannedVideoOutput> = {}): VideoPlanItem => ({
+    ...item,
+    outputs: [{ ...av1, search: { metric: "vmaf", target: 90 }, ...over }, h264, item.outputs[2]!],
+  });
+  const withRecordedAv1 = (over: Partial<ManifestVideoOutput>): ManifestVideoSource => {
+    const e = entry();
+    e.outputs[0] = { ...e.outputs[0]!, ...over };
+    return e;
+  };
+
+  it("is a hit whatever CRF the search landed on", async () => {
+    const e = withRecordedAv1({
+      crf: 41,
+      search: { metric: "vmaf", target: 90 },
+      score: 90.4,
+      scorer: "libvmaf",
+    });
+    expect(await checkVideoCache(searched(), e, present)).toEqual({ kind: "hit" });
+  });
+
+  it("misses when the target or the metric changed", async () => {
+    const e = withRecordedAv1({ crf: 41, search: { metric: "vmaf", target: 90 } });
+    expect(
+      await checkVideoCache(searched({ search: { metric: "vmaf", target: 95 } }), e, present),
+    ).toMatchObject({ reason: "outputs-differ" });
+    expect(
+      await checkVideoCache(
+        searched({ search: { metric: "ssimulacra2", target: 90 } }),
+        e,
+        present,
+      ),
+    ).toMatchObject({ reason: "outputs-differ" });
+  });
+
+  it("misses when a search was added to, or removed from, the plan", async () => {
+    const e = withRecordedAv1({ crf: 41, search: { metric: "vmaf", target: 90 } });
+    // Plan without a search against an output that was searched.
+    expect(await checkVideoCache(item, e, present)).toMatchObject({ reason: "outputs-differ" });
+    // Plan with a search against an output that was made at a fixed CRF.
+    expect(await checkVideoCache(searched(), entry(), present)).toMatchObject({
+      reason: "outputs-differ",
+    });
+  });
+
+  it("an output without a search still depends on its CRF", async () => {
+    const e = withRecordedAv1({ crf: 41 });
+    expect(await checkVideoCache(item, e, present)).toMatchObject({ reason: "outputs-differ" });
+  });
+});

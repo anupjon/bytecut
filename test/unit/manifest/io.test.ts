@@ -243,3 +243,64 @@ describe("manifest: search records", () => {
     expect(parseManifest(serializeManifest(sample))).toEqual(sample);
   });
 });
+
+describe("manifest: video search records", () => {
+  const withVideo = (over: Record<string, unknown>) => {
+    const copy = structuredClone(sample) as unknown as {
+      videos: Record<string, Record<string, unknown>>;
+    };
+    copy.videos["m/clip.mp4"] = {
+      sha256: "a".repeat(64),
+      bytes: 1000,
+      width: 640,
+      height: 360,
+      durationSec: 4,
+      preset: "content-video",
+      outputs: [
+        {
+          path: "m/clip/clip-640.h264.mp4",
+          url: "/_bytecut/m/clip/clip-640.h264.mp4",
+          role: "video",
+          format: "mp4",
+          codec: "h264",
+          width: 640,
+          height: 360,
+          bytes: 400,
+          sha256: "b".repeat(64),
+          crf: 29,
+          encoder: "libx264",
+          status: "written",
+          ...over,
+        },
+      ],
+    };
+    return copy;
+  };
+
+  it("round-trips the metric, target, score and scorer", () => {
+    const m = withVideo({
+      search: { metric: "vmaf", target: 92 },
+      score: 92.7,
+      scorer: "libvmaf",
+    });
+    expect(parseManifest(JSON.stringify(m))).toMatchObject({
+      videos: {
+        "m/clip.mp4": {
+          outputs: [{ crf: 29, search: { metric: "vmaf", target: 92 }, scorer: "libvmaf" }],
+        },
+      },
+    });
+  });
+
+  it("rejects an unknown metric, a stray key and an unknown scorer", () => {
+    expect(() =>
+      parseManifest(JSON.stringify(withVideo({ search: { metric: "psnr", target: 40 } }))),
+    ).toThrow();
+    expect(() =>
+      parseManifest(
+        JSON.stringify(withVideo({ search: { metric: "vmaf", target: 90, floor: 70 } })),
+      ),
+    ).toThrow();
+    expect(() => parseManifest(JSON.stringify(withVideo({ scorer: "gpu" })))).toThrow();
+  });
+});

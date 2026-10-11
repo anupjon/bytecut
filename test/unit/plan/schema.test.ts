@@ -98,3 +98,60 @@ describe("plan schema: search", () => {
     }
   });
 });
+
+describe("plan schema: video search", () => {
+  const videoPlan = (search?: unknown) =>
+    ({
+      ...clone(),
+      items: [],
+      videos: [
+        {
+          source: "m/a.mp4",
+          sourceBytes: 1000,
+          sourceSha256: "a".repeat(64),
+          sourceWidth: 1280,
+          sourceHeight: 720,
+          durationSec: 10,
+          fps: 30,
+          hasAudio: false,
+          videoCodec: "h264",
+          preset: "background-video",
+          outputs: [
+            {
+              role: "video",
+              path: "m/a/a-1280.h264.mp4",
+              codec: "h264",
+              width: 1280,
+              crf: 28,
+              speed: "slow",
+              maxWidth: null,
+              maxFps: null,
+              audio: "strip",
+              audioBitrate: "96k",
+              ...(search === undefined ? {} : { search }),
+            },
+          ],
+        },
+      ],
+    }) as unknown as Plan;
+
+  it("round-trips a video output with a target", () => {
+    for (const search of [
+      { metric: "vmaf", target: 93 },
+      { metric: "ssimulacra2", target: 70 },
+    ]) {
+      expect(parsePlan(serializePlan(videoPlan(search)))).toEqual(videoPlan(search));
+    }
+  });
+
+  it("rejects an unknown metric, an out-of-range target and stray keys", () => {
+    for (const search of [
+      { metric: "psnr", target: 40 },
+      { metric: "vmaf", target: 0 },
+      { metric: "vmaf", target: 101 },
+      { metric: "vmaf", target: 90, floor: 70 },
+    ]) {
+      expect(() => parsePlan(JSON.stringify(videoPlan(search)))).toThrow();
+    }
+  });
+});

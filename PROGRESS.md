@@ -2,18 +2,18 @@
 
 ## Status
 
-| Milestone                           | Status                                                       |
-| ----------------------------------- | ------------------------------------------------------------ |
-| M0 Scaffold                         | Complete locally; CI not yet run                             |
-| M1 Image engine + headless optimize | Complete locally; CI not yet run                             |
-| M2 Plan, manifest, cache            | Complete locally; CI not yet run                             |
-| M3 Scanner, classifier, audit       | Complete locally; CI not yet run                             |
-| M4 TUI                              | Complete locally; CI not yet run                             |
-| M5 Video                            | Complete locally; CI not yet run                             |
-| M6 Web outputs                      | Complete locally; CI not yet run                             |
-| M7 Config                           | Complete locally; CI not yet run                             |
-| M8 CI mode                          | Complete locally; CI not yet run                             |
-| M9 Quality targets & compare        | In progress: stages 1–2 of 3 complete (scorer, image search) |
+| Milestone                           | Status                                           |
+| ----------------------------------- | ------------------------------------------------ |
+| M0 Scaffold                         | Complete locally; CI not yet run                 |
+| M1 Image engine + headless optimize | Complete locally; CI not yet run                 |
+| M2 Plan, manifest, cache            | Complete locally; CI not yet run                 |
+| M3 Scanner, classifier, audit       | Complete locally; CI not yet run                 |
+| M4 TUI                              | Complete locally; CI not yet run                 |
+| M5 Video                            | Complete locally; CI not yet run                 |
+| M6 Web outputs                      | Complete locally; CI not yet run                 |
+| M7 Config                           | Complete locally; CI not yet run                 |
+| M8 CI mode                          | Complete locally; CI not yet run                 |
+| M9 Quality targets & compare        | Complete locally (3 of 3 stages); CI not yet run |
 
 ## M0 — what changed
 
@@ -309,8 +309,6 @@ go/no-go gate and it passed.
 
 ## M9 — stage 2 of 3: image quality search (what changed)
 
-Stage 3 (video, `vmaf`, `/compare`) is not started.
-
 - **Config** (image presets): `ssimulacra2: <1–100>` is the lowest acceptable score; `maxSize` caps
   one output file; `floor` is the lowest score allowed while fitting that cap. `maxSize` needs
   `ssimulacra2` and **requires `floor`** (how far quality may fall is a stated tradeoff, not a hidden
@@ -340,6 +338,65 @@ Stage 3 (video, `vmaf`, `/compare`) is not started.
   `--ssimulacra2 <path>` selects a native tool; `explain` shows the search; dry-run plans show
   `ssimulacra2 >= 80, <= 150 KB` instead of a quality; results show `q67 · ssimulacra2 81.0`.
   Cancelling mid-search records `cancelled` and writes nothing.
+
+## M9 — stage 3 of 3: video search, `vmaf`, `/compare` (what changed)
+
+- **Config** (video presets): `ssimulacra2: <1–100>` or `vmaf: <1–100>`, one metric per preset.
+  `floor` and `maxSize` stay image-only (a size cap on video is not part of M9); `vmaf` is rejected on
+  image presets. `raw` is still rejected with the reason. The preset's `crf` becomes the search's
+  starting point and the fallback.
+- **Plan / manifest** (optional, additive): a video output may carry `search: { metric, target }`; the
+  manifest records `search`, `score` and `scorer` (`wasm`, `native` or `libvmaf`) and the `crf` the
+  search landed on. Cache validity compares metric and target, not `crf`.
+- **Algorithm** (`src/core/quality/video-search.ts`): three clips of 2 s at 20/50/80% (a video of at
+  most 6 s is scored whole). A candidate CRF is encoded per clip **in memory** (Matroska on stdout,
+  decoded again through a pipe: no file is written), four evenly spaced frames per clip are scored at
+  ≤512 px against the source decoded through the same fps cap and scale, and the **worst clip** is the
+  CRF's score (you chose worst over mean). The CRF is found by bisection starting at the preset's CRF
+  (~6 probes; AV1 10–63, H.264 10–51). A returned CRF was always measured passing.
+- **Confirm**: after the real encode, the same clips are scored on the output file; a miss lowers CRF by
+  2 and re-encodes, at most 3 times. A whole-video search is exact and skips this.
+- **Unmet** (target unreachable at the lowest CRF, or still short after the bumps): nothing is written for
+  that output, the item fails, exit 1 (you chose fail over best-effort).
+- **`vmaf`**: ffmpeg `libvmaf` over the source clip and the encoded clip, at the output's resolution,
+  `n_subsample=3`; the score is parsed from ffmpeg's `VMAF score:` log line. Without `libvmaf` the output
+  uses the fixed CRF, a warning says so, and the manifest still records `search` (without a `score`) so
+  the cache hits; once libvmaf (or a scorer) exists, that output is searched on the next run.
+- **Scorer**: the same selection as images (`--ssimulacra2` → env → config → PATH, WASM fallback), the
+  same lazy start. Frames are scored by the worker pool.
+- **`bytecut compare <file>` and `/compare @file`** (`src/core/compare/`): `node:http` on `127.0.0.1`,
+  random port, an unguessable 128-bit path token, GET/HEAD only, a Host check against DNS rebinding,
+  files addressed by index into a list fixed at start (a request never names a path), only outputs the
+  manifest says were written and that resolve inside `outDir`, Range support for video, a CSP that
+  allows only itself, no auto-open. The page is one self-contained document: a before/after slider for
+  images, synced side-by-side players for video, and the sizes, CRF/quality, metric and score.
+  `Ctrl-C` stops it (SIGINT exit 0 verified); the TUI stops its servers on quit.
+
+## Verification (2026-10-11, Linux, Node 23.8, ffmpeg 6.1.1)
+
+- Stage 3: `pnpm typecheck`, `pnpm lint` pass; `pnpm test` 83 files, 1080+ passed, 1 skipped (the
+  native scorer comparison, gated on `BYTECUT_TEST_SSIMULACRA2`). New: CRF search with fakes (monotonic,
+  non-monotonic, unreachable, clamped start), clip selection and geometry, executor paths (found, bumped,
+  unmet, whole, no scorer, retry once available, vmaf, no libvmaf), cache rules, plan/manifest/config
+  schemas, ffmpeg argument builders and the `VMAF score:` parser, the compare server (token, Host,
+  methods, traversal, ranges, symlink and status filters, no external requests in the page), the real
+  `compare` process with SIGINT, `/compare` in the TUI.
+- **Real ffmpeg, built-in scorer, no native tool**: a 9 s 320x240 clip is searched (sampled), the output's
+  recorded score meets the target and is not wildly above it, an independent scoring of frames the search
+  did not sample agrees within the metric's spread, a higher target costs more bytes at a lower CRF, a
+  second run encodes nothing and leaves the manifest byte-identical, and an unreachable target exits 1
+  with no `.mp4` written. Engine primitives are checked directly (frame count and exact geometry; score
+  falls as CRF rises).
+- **Mutation checks**: 15 of 15 caught (pass comparison, worst-clip aggregation for search and confirm,
+  unreachable detection, frame-count mismatch, confirm skipped / always run / unbounded, retry once a
+  metric is available, vmaf without libvmaf, cache ignoring search in two places, Host check, token,
+  unwritten outputs served). Two survived first and each got a test: confirm by the worst clip, and the
+  status filter (the test's files did not exist, so the filter was never the reason).
+- **`vmaf` was NOT run against a real libvmaf**: this machine's ffmpeg has no `libvmaf` filter. What is
+  verified is the argument shape, the log parser (against the documented line), the engine's error when
+  the filter is missing (a real ffmpeg is asked to build the graph), and the executor behaviour with a
+  fake. The score semantics (pooled mean at output resolution, `n_subsample=3`, model default
+  `vmaf_v0.6.1`) are unverified until someone runs it on a build with libvmaf.
 
 ## Verification (2026-10-10, Linux, Node 23.8, ffmpeg 6.1.1)
 
@@ -452,6 +509,19 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
   bump catch an optimistic sample; a very non-monotonic encoder could miss the true minimum.
 - **Stepping down is by size only** (10% steps, never below half the planned width); a score target that
   cannot be reached at any quality fails rather than stepping.
+- **Video search costs minutes on large sources.** On a 320x240 9 s clip a search takes ~16 s (H.264
+  `slow`, 6 probes, clips run side by side); SVT-AV1 at 1080p is far heavier, since every probe encodes
+  three 2 s clips at the real preset. It is paid once per source and cached by hash, but a cold CI run of
+  a project with many searched videos will be slow. No time estimate is shown yet.
+- **Video search quality is judged on 3 × 2 s at ≤512 px**, four frames per clip, so a scene the clips
+  miss is only caught by the confirmation (which scores the same windows). A very long video with one
+  hard scene elsewhere can land under target there.
+- **The video fallback records `search` without `score`** so it caches; a fixed-CRF output is therefore
+  indistinguishable from "searched" except by the missing score and the warning of that run.
+- **Audit size estimates for video still use the fixed CRF**, as for images.
+- **`vmaf` is unverified against a real libvmaf** (see verification).
+- **`/compare` serves the original through the browser**: a source the browser cannot display (TIFF,
+  HEIC, some GIFs) shows a broken image on the "before" side. Sizes and scores still show.
 - **A native scorer can pick a different quality than WASM** once searches exist: scores differ by
   up to ~0.03, so a threshold crossing can land one step apart. Stage 2 records which scorer ran
   in the manifest and keeps it out of cache validity so runs do not ping-pong between machines.
@@ -472,6 +542,6 @@ absolute maximum; largest WebP as the fallback; plain `<picture>` JSX rather tha
 
 ## Next
 
-M9 (stretch) — perceptual quality targets (`ssimulacra2` via our own WASM build, `vmaf` search),
-`maxSize` conflict resolution and `/compare`. It adds a new package and a verified licence, so it needs
-a confirmed plan first (§10).
+M0–M9 are complete locally. Open items that need you, not code: a real CI run on Linux/macOS/Windows,
+publishing `@bytecut/ssimulacra2` (and owning the `@bytecut` scope), a `vmaf` run on an ffmpeg with
+libvmaf, and an owner for SVG output (no milestone covers it).

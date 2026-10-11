@@ -3,7 +3,16 @@ import pkg from "../../package.json" with { type: "json" };
 import { guarded } from "./errors.js";
 import { runDefault } from "./interactive.js";
 
-const SUBCOMMANDS = ["audit", "optimize", "snippet", "explain", "init", "check", "doctor"];
+const SUBCOMMANDS = [
+  "audit",
+  "optimize",
+  "snippet",
+  "compare",
+  "explain",
+  "init",
+  "check",
+  "doctor",
+];
 
 const main = defineCommand({
   meta: {
@@ -23,6 +32,7 @@ const main = defineCommand({
     audit: () => import("./commands/audit.js").then((m) => m.default),
     optimize: () => import("./commands/optimize.js").then((m) => m.default),
     snippet: () => import("./commands/snippet.js").then((m) => m.default),
+    compare: () => import("./commands/compare.js").then((m) => m.default),
     explain: () => import("./commands/explain.js").then((m) => m.default),
     init: () => import("./commands/init.js").then((m) => m.default),
     check: () => import("./commands/check.js").then((m) => m.default),

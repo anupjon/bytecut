@@ -78,6 +78,7 @@ export function plannedVideoOutputs(
       maxFps: preset.maxFps,
       audio: preset.audio,
       audioBitrate: preset.audioBitrate,
+      ...(preset.search ? { search: { ...preset.search } } : {}),
     });
   }
   outputs.push({

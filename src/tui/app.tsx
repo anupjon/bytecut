@@ -303,6 +303,27 @@ export function App(props: AppProps): ReactNode {
           await showSnippet(hit);
           return;
         }
+        case "compare": {
+          const wanted = parsed.mentions[0];
+          const hit = wanted
+            ? s.files.includes(wanted)
+              ? wanted
+              : fuzzyFiles(wanted, s.files, 1)[0]
+            : rowAt(s)?.source;
+          if (!hit) {
+            dispatch({ type: "status", message: "Usage: /compare @file (an optimized file)" });
+            return;
+          }
+          const started = await session.compare(hit, s.outDir);
+          dispatch({
+            type: "status",
+            message:
+              "error" in started
+                ? started.error
+                : `Compare ${hit}: ${started.url} (local only; stops when you quit)`,
+          });
+          return;
+        }
         case "doctor":
           dispatch({ type: "overlay", overlay: "doctor" });
           void props.loadDoctor().then(setDoctor);
