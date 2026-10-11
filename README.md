@@ -18,7 +18,7 @@ landscape image is 1920 wide, a portrait one is 1920 tall, nothing is ever upsca
 and GPS are stripped, orientation is applied and the colour profile is kept.
 
 ```
-public/img/hero.jpg  →  public/_bytecut/img/hero/hero-1920.jpg
+public/img/hero.jpg  →  public/_bytecut/img/hero-1920.jpg
                          public/_bytecut/bytecut-manifest.json
 ```
 
@@ -29,6 +29,10 @@ public/img/hero.jpg  →  public/_bytecut/img/hero/hero-1920.jpg
   "already optimal".
 - **Videos and animated GIFs** become AV1 and H.264 MP4 plus a poster, using your own
   `ffmpeg` (see [Video](#video)).
+
+Outputs are flat: an image at the top of your static folder lands directly in `_bytecut/`, and
+one in a subfolder keeps that subfolder (`public/img/hero.jpg` → `_bytecut/img/hero-1920.jpg`).
+There is no extra folder per image.
 
 Re-running is cheap: unchanged sources are skipped by content hash, and the manifest is
 byte-identical when nothing changed, so it diffs cleanly in pull requests.

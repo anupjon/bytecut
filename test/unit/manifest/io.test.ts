@@ -18,8 +18,8 @@ export const sample: Manifest = {
       preset: "photo",
       outputs: [
         {
-          path: "b/two/two-640.avif",
-          url: "/_bytecut/b/two/two-640.avif",
+          path: "b/two-640.avif",
+          url: "/_bytecut/b/two-640.avif",
           format: "avif",
           width: 640,
           height: 480,
@@ -112,8 +112,8 @@ describe("parseManifest", () => {
           preset: "content-video",
           outputs: [
             {
-              path: "v/a/a-1920.av1.mp4",
-              url: "/_bytecut/v/a/a-1920.av1.mp4",
+              path: "v/a-1920.av1.mp4",
+              url: "/_bytecut/v/a-1920.av1.mp4",
               role: "video" as const,
               format: "mp4" as const,
               codec: "av1" as const,
@@ -175,8 +175,8 @@ describe("M6 fields (additive, still version 3)", () => {
         placeholder: { kind: "lqip", value: "data:image/webp;base64,AAAA" },
         outputs: [
           {
-            path: "v/a/a-640.av1.mp4",
-            url: "/_bytecut/v/a/a-640.av1.mp4",
+            path: "v/a-640.av1.mp4",
+            url: "/_bytecut/v/a-640.av1.mp4",
             role: "video",
             format: "mp4",
             codec: "av1",
@@ -224,7 +224,7 @@ describe("manifest: search records", () => {
         target: 80,
         floor: 60,
         maxBytes: 150000,
-        plannedPath: "b/two/two-1920.avif",
+        plannedPath: "b/two-1920.avif",
       },
       score: 81.23,
       scorer: "wasm",
@@ -258,8 +258,8 @@ describe("manifest: video search records", () => {
       preset: "content-video",
       outputs: [
         {
-          path: "m/clip/clip-640.h264.mp4",
-          url: "/_bytecut/m/clip/clip-640.h264.mp4",
+          path: "m/clip-640.h264.mp4",
+          url: "/_bytecut/m/clip-640.h264.mp4",
           role: "video",
           format: "mp4",
           codec: "h264",

@@ -149,7 +149,7 @@ export async function explainFile(options: ExplainOptions): Promise<Explanation>
       const name = posix.basename(source, posix.extname(source));
       const outputs = resolved
         ? outputWidths(resolved, analysis.width, analysis.height).flatMap((w) =>
-            resolved.formats.map((f) => posix.join(dir, name, `${name}-${w}.${f}`)),
+            resolved.formats.map((f) => posix.join(dir, `${name}-${w}.${f}`)),
           )
         : [];
       return {

@@ -79,11 +79,11 @@ describe("optimize (M1)", () => {
     const files = await listFiles(outDir);
     expect(files).toEqual(
       expect.arrayContaining([
-        "assets/photo/photo-1400.avif",
-        "assets/photo/photo-1400.webp",
-        "assets/oversized/oversized-1920.webp",
-        "assets/oversized/oversized-1920.avif",
-        "assets/flat-alpha/flat-alpha-512.avif",
+        "assets/photo-1400.avif",
+        "assets/photo-1400.webp",
+        "assets/oversized-1920.webp",
+        "assets/oversized-1920.avif",
+        "assets/flat-alpha-512.avif",
       ]),
     );
     expect(files.some((f) => f.endsWith(".tmp"))).toBe(false);
@@ -103,28 +103,30 @@ describe("optimize (M1)", () => {
     const { outDir } = shared;
 
     // 1400px source: within the 1920 cap, so one size per format at its native width.
-    const avif = await meta(outDir, "assets/photo/photo-1400.avif");
+    const avif = await meta(outDir, "assets/photo-1400.avif");
     expect(avif.format).toBe("heif");
     expect(avif.compression).toBe("av1");
     expect(avif.width).toBe(1400);
 
-    const webp = await meta(outDir, "assets/photo/photo-1400.webp");
+    const webp = await meta(outDir, "assets/photo-1400.webp");
     expect(webp.format).toBe("webp");
     expect(webp.width).toBe(1400);
-    expect(await listFiles(join(outDir, "assets/photo"))).toEqual([
-      "photo-1400.avif",
-      "photo-1400.webp",
-    ]);
+    // One flat file per format next to its siblings: no folder per image.
+    expect((await listFiles(join(outDir, "assets"))).filter((f) => /^photo-\d+\./.test(f))).toEqual(
+      ["photo-1400.avif", "photo-1400.webp"],
+    );
 
     // 300px source: one output at native width.
-    expect((await meta(outDir, "assets/small/small-300.webp")).width).toBe(300);
+    expect((await meta(outDir, "assets/small-300.webp")).width).toBe(300);
 
     // Oversized landscape source: capped at 1920 wide, a single size per format.
-    expect((await meta(outDir, "assets/oversized/oversized-1920.avif")).width).toBe(1920);
-    expect(await listFiles(join(outDir, "assets/oversized"))).toHaveLength(2);
+    expect((await meta(outDir, "assets/oversized-1920.avif")).width).toBe(1920);
+    const under = async (prefix: string) =>
+      (await listFiles(join(outDir, "assets"))).filter((f) => f.startsWith(prefix));
+    expect(await under("oversized-")).toHaveLength(2);
 
     // Flat art is classified as icon: small widths, none above 512 even for a 600px source.
-    expect(await listFiles(join(outDir, "assets/flat-alpha"))).toEqual([
+    expect(await under("flat-alpha-")).toEqual([
       "flat-alpha-128.avif",
       "flat-alpha-128.webp",
       "flat-alpha-256.avif",
@@ -139,7 +141,7 @@ describe("optimize (M1)", () => {
   it("applies EXIF rotation before stripping metadata", async () => {
     const { outDir } = shared;
     // Stored 800x500 with orientation 6, so it must come out 500x800 and without an EXIF block.
-    const out = await meta(outDir, "assets/rotated-exif/rotated-exif-500.webp");
+    const out = await meta(outDir, "assets/rotated-exif-500.webp");
     expect([out.width, out.height]).toEqual([500, 800]);
     expect(out.exif).toBeUndefined();
     expect(out.orientation === undefined || out.orientation === 1).toBe(true);
@@ -150,7 +152,7 @@ describe("optimize (M1)", () => {
     const source = await sharp(join(root, "assets/gps.jpg")).metadata();
     expect(source.exif).toBeDefined(); // precondition: the fixture really carries EXIF
 
-    for (const rel of ["assets/gps/gps-700.avif", "assets/gps/gps-700.webp"]) {
+    for (const rel of ["assets/gps-700.avif", "assets/gps-700.webp"]) {
       expect((await meta(outDir, rel)).exif).toBeUndefined();
     }
   });
@@ -159,7 +161,7 @@ describe("optimize (M1)", () => {
     const { root, outDir } = shared;
     const source = await sharp(join(root, "assets/p3.jpg")).metadata();
     expect(source.icc).toBeDefined(); // precondition: the fixture is really tagged
-    for (const rel of ["assets/p3/p3-500.avif", "assets/p3/p3-500.webp"]) {
+    for (const rel of ["assets/p3-500.avif", "assets/p3-500.webp"]) {
       const out = await meta(outDir, rel);
       // Same bytes as the source profile: not dropped and not converted to sRGB.
       expect(out.icc?.equals(source.icc!)).toBe(true);
@@ -168,8 +170,8 @@ describe("optimize (M1)", () => {
 
   it("preserves alpha", async () => {
     const { outDir } = shared;
-    expect((await meta(outDir, "assets/flat-alpha/flat-alpha-512.avif")).hasAlpha).toBe(true);
-    expect((await meta(outDir, "assets/flat-alpha/flat-alpha-512.webp")).hasAlpha).toBe(true);
+    expect((await meta(outDir, "assets/flat-alpha-512.avif")).hasAlpha).toBe(true);
+    expect((await meta(outDir, "assets/flat-alpha-512.webp")).hasAlpha).toBe(true);
   });
 
   it("never writes an output larger than its source", async () => {
@@ -231,7 +233,7 @@ describe("optimize (M1)", () => {
       /corrupt/,
     );
     expect(result.items.find((i) => i.source === "assets/corrupt.jpg")?.status).toBe("skipped");
-    expect(await listFiles(outDir)).toContain("assets/small/small-300.avif");
+    expect(await listFiles(outDir)).toContain("assets/small-300.avif");
   });
 });
 
@@ -247,7 +249,7 @@ describe("bytecut optimize CLI (headless)", () => {
     const root = await newProject();
     const { stdout } = await cli(root, ["optimize", "assets/photo.jpg"]);
     expect(stdout).toContain("Plan: 1 image");
-    expect(stdout).toContain("assets/photo/photo-1400.jpg");
+    expect(stdout).toContain("assets/photo-1400.jpg");
     expect(stdout).toContain("Dry run");
     expect(await listFiles(join(root, "_bytecut"))).toEqual([]);
   });
@@ -257,7 +259,7 @@ describe("bytecut optimize CLI (headless)", () => {
     const before = await hashAll(join(root, "assets"), IMAGE_FIXTURES);
     const { stdout } = await cli(root, ["optimize", "assets/small.jpg", "assets/p3.jpg", "-y"]);
     expect(stdout).toMatch(/Total: \d+ files written/);
-    expect(await listFiles(join(root, "_bytecut"))).toContain("assets/small/small-300.jpg");
+    expect(await listFiles(join(root, "_bytecut"))).toContain("assets/small-300.jpg");
     expect(await hashAll(join(root, "assets"), IMAGE_FIXTURES)).toEqual(before);
   });
 
@@ -267,7 +269,7 @@ describe("bytecut optimize CLI (headless)", () => {
     expect(await listFiles(join(root, "dist-img"))).toEqual([
       ".bytecut-cache/.gitignore",
       ".bytecut-cache/cache.json",
-      "assets/small/small-300.jpg",
+      "assets/small-300.jpg",
       "bytecut-manifest.json",
     ]);
   });
@@ -333,7 +335,7 @@ describe("bytecut optimize CLI: plans and manifest (M2)", () => {
     expect(ran.stdout).toMatch(/Total: 1 files? written/);
     // A saved plan is executed without analysing anything, so no analysis cache is written.
     expect(await listFiles(join(root, "_bytecut"))).toEqual([
-      "assets/small/small-300.jpg",
+      "assets/small-300.jpg",
       "bytecut-manifest.json",
     ]);
   });
@@ -428,15 +430,15 @@ describe("zero-config CLI: detection and audit (M3)", () => {
       ".bytecut-cache/.gitignore",
       ".bytecut-cache/cache.json",
       "bytecut-manifest.json",
-      "img/p3/p3-500.jpg",
-      "img/small/small-300.jpg",
+      "img/p3-500.jpg",
+      "img/small-300.jpg",
     ]);
     const manifest = JSON.parse(
       await readFile(join(root, "public/_bytecut/bytecut-manifest.json"), "utf8"),
     );
     expect(manifest.version).toBe(3);
     expect(manifest.sources["public/img/small.jpg"].outputs[0].url).toBe(
-      "/_bytecut/img/small/small-300.jpg",
+      "/_bytecut/img/small-300.jpg",
     );
   });
 

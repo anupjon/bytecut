@@ -16,7 +16,7 @@
       },
       "outputs": [
         {
-          "path": "img/hero/hero-1920.jpg",
+          "path": "img/hero-1920.jpg",
           "format": "jpg",
           "width": 1920,
           "lossless": false,
@@ -38,7 +38,7 @@
       },
       "outputs": [
         {
-          "path": "img/logo/logo-64.png",
+          "path": "img/logo-64.png",
           "format": "png",
           "width": 64,
           "lossless": true,
@@ -46,7 +46,7 @@
           "effort": 7
         },
         {
-          "path": "img/logo/logo-128.png",
+          "path": "img/logo-128.png",
           "format": "png",
           "width": 128,
           "lossless": true,
@@ -54,7 +54,7 @@
           "effort": 7
         },
         {
-          "path": "img/logo/logo-256.png",
+          "path": "img/logo-256.png",
           "format": "png",
           "width": 256,
           "lossless": true,
@@ -62,7 +62,7 @@
           "effort": 7
         },
         {
-          "path": "img/logo/logo-300.png",
+          "path": "img/logo-300.png",
           "format": "png",
           "width": 300,
           "lossless": true,
@@ -84,7 +84,7 @@
       },
       "outputs": [
         {
-          "path": "img/mid/mid-1000.jpg",
+          "path": "img/mid-1000.jpg",
           "format": "jpg",
           "width": 1000,
           "lossless": false,

@@ -86,7 +86,7 @@ describe("buildPlan", () => {
     const plan = await build({ "img/hero.jpg": { width: 1400 } });
     expect(plan.outDir).toBe("public/_bytecut");
     // 1400 is within the 1920 cap: one JPEG, at its native width.
-    expect(plan.items[0]?.outputs.map((o) => o.path)).toEqual(["img/hero/hero-1400.jpg"]);
+    expect(plan.items[0]?.outputs.map((o) => o.path)).toEqual(["img/hero-1400.jpg"]);
   });
 
   it("caps a large landscape at 1920 wide and a large portrait at 1920 tall", async () => {
@@ -95,14 +95,14 @@ describe("buildPlan", () => {
       "tall.jpg": { width: 3000, height: 4000 },
     });
     const paths = (i: number) => plan.items[i]!.outputs.map((o) => o.path);
-    expect(paths(0)).toEqual(["tall/tall-1440.jpg"]);
-    expect(paths(1)).toEqual(["wide/wide-1920.jpg"]);
+    expect(paths(0)).toEqual(["tall-1440.jpg"]);
+    expect(paths(1)).toEqual(["wide-1920.jpg"]);
   });
 
   it("writes a single lossy JPEG by default", async () => {
     const plan = await build({ "a.jpg": { width: 500 } });
     expect(plan.items[0]!.outputs).toMatchObject([
-      { format: "jpg", lossless: false, width: 500, path: "a/a-500.jpg" },
+      { format: "jpg", lossless: false, width: 500, path: "a-500.jpg" },
     ]);
   });
 
@@ -133,7 +133,7 @@ describe("buildPlan", () => {
     it("keeps transparency by writing a lossless PNG instead of a JPEG (§6.9)", async () => {
       const plan = await planFor({ format: "png", width: 500, hasAlpha: true, alphaUsed: true });
       expect(plan.items[0]!.outputs).toMatchObject([
-        { format: "png", lossless: true, path: "a/a-500.png" },
+        { format: "png", lossless: true, path: "a-500.png" },
       ]);
     });
 
@@ -173,7 +173,7 @@ describe("buildPlan", () => {
         { format: "png", width: 500, hasAlpha: true, alphaUsed: true },
         { formats: ["jpg", "png"] },
       );
-      expect(plan.items[0]!.outputs.map((o) => o.path)).toEqual(["a/a-500.png"]);
+      expect(plan.items[0]!.outputs.map((o) => o.path)).toEqual(["a-500.png"]);
     });
 
     it("lists each format once and in the preset's order", async () => {
@@ -229,9 +229,9 @@ describe("buildPlan", () => {
       "public",
     );
     const paths = plan.items.flatMap((i) => i.outputs.map((o) => o.path));
-    expect(paths).toContain("img/hero/hero-700.jpg");
+    expect(paths).toContain("img/hero-700.jpg");
     // Outside the static root: mirrored from the project root instead.
-    expect(paths).toContain("src/assets/a/a-700.jpg");
+    expect(paths).toContain("src/assets/a-700.jpg");
   });
 
   it("records the preset and why it was chosen", async () => {

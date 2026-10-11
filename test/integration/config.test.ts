@@ -86,7 +86,7 @@ describe("config drives the plan", () => {
     expect(small.preset).toBe("small-photo");
     expect(small.outputs).toEqual([
       expect.objectContaining({
-        path: "img/small/small-200.webp",
+        path: "img/small-200.webp",
         format: "webp",
         width: 200,
         quality: 50,
@@ -102,7 +102,9 @@ describe("config drives the plan", () => {
     const root = await project({ "bytecut.config.json": config });
     const before = await hashAll(join(root, "public/img"), ["small.jpg", "other.jpg"]);
     await cli(root, ["optimize", "-y"]);
-    const files = await listFiles(join(root, "public/_bytecut/img/small"));
+    const files = (await listFiles(join(root, "public/_bytecut/img"))).filter((f) =>
+      f.startsWith("small-"),
+    );
     expect(files).toEqual(["small-200.webp"]);
     const manifest = parseManifest(
       await readFile(join(root, "public/_bytecut/bytecut-manifest.json"), "utf8"),

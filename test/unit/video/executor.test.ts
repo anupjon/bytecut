@@ -99,9 +99,9 @@ describe("video execution", () => {
     ]);
     const files = await listFiles(ctx.outDir);
     expect(files).toEqual([
-      "media/clip/clip-1280.av1.mp4",
-      "media/clip/clip-1280.h264.mp4",
-      "media/clip/clip-poster.avif",
+      "media/clip-1280.av1.mp4",
+      "media/clip-1280.h264.mp4",
+      "media/clip-poster.avif",
     ]);
     expect(files.some((f) => f.endsWith(".tmp"))).toBe(false);
     expect((await stat(join(ctx.outDir, files[0]!))).size).toBe(8_000);
@@ -145,7 +145,7 @@ describe("video execution", () => {
       "written",
       "written",
     ]);
-    expect(await listFiles(ctx.outDir)).not.toContain("media/clip/clip-1280.av1.mp4");
+    expect(await listFiles(ctx.outDir)).not.toContain("media/clip-1280.av1.mp4");
     expect((await listFiles(ctx.outDir)).some((f) => f.endsWith(".tmp"))).toBe(false);
   });
 
@@ -225,7 +225,7 @@ describe("video execution", () => {
 describe("guardrail 6 for videos", () => {
   it("leaves an existing file it does not own alone, and warns", async () => {
     const ctx = await setup();
-    const target = join(ctx.outDir, "media/clip/clip-1280.h264.mp4");
+    const target = join(ctx.outDir, "media/clip-1280.h264.mp4");
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, "someone else's file");
 
@@ -240,7 +240,7 @@ describe("guardrail 6 for videos", () => {
   it("accepts a file that is already byte-identical, without a write", async () => {
     const ctx = await setup({ bytes: () => 7_000 });
     const identical = Buffer.alloc(7_000, (23 + "libx264".length) % 251);
-    const target = join(ctx.outDir, "media/clip/clip-1280.h264.mp4");
+    const target = join(ctx.outDir, "media/clip-1280.h264.mp4");
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, identical);
     const result = await run(ctx);
@@ -250,7 +250,7 @@ describe("guardrail 6 for videos", () => {
 
   it("overwrites it with force", async () => {
     const ctx = await setup({ bytes: () => 7_000 });
-    const target = join(ctx.outDir, "media/clip/clip-1280.h264.mp4");
+    const target = join(ctx.outDir, "media/clip-1280.h264.mp4");
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, "someone else's file");
     const result = await run(ctx, { force: true });
@@ -309,8 +309,8 @@ describe("degradation (§4)", () => {
     );
     expect(ctx.calls.encodes.map((e) => e.encoder)).toEqual(["libx264"]);
     expect(await listFiles(ctx.outDir)).toEqual([
-      "media/clip/clip-1280.h264.mp4",
-      "media/clip/clip-poster.avif",
+      "media/clip-1280.h264.mp4",
+      "media/clip-poster.avif",
     ]);
   });
 
@@ -383,14 +383,14 @@ describe("cancel (§6.4)", () => {
       "cancelled",
       "cancelled",
     ]);
-    expect(await listFiles(ctx.outDir)).toEqual(["media/clip/clip-1280.av1.mp4"]);
+    expect(await listFiles(ctx.outDir)).toEqual(["media/clip-1280.av1.mp4"]);
 
     // The manifest lists exactly the file on disk, so a resumed run reuses it.
     const manifest = manifestAfter(ctx, result);
     expect(Object.values(manifest.videos)[0]!.outputs.map((o) => o.path)).toEqual([
-      "media/clip/clip-1280.av1.mp4",
+      "media/clip-1280.av1.mp4",
     ]);
-    const onDisk = await readFile(join(ctx.outDir, "media/clip/clip-1280.av1.mp4"));
+    const onDisk = await readFile(join(ctx.outDir, "media/clip-1280.av1.mp4"));
     expect(Object.values(manifest.videos)[0]!.outputs[0]!.sha256).toBe(sha256(onDisk));
 
     ctx.engine.encode = inner;

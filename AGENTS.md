@@ -106,21 +106,23 @@ test/
 
 ### Output layout
 ```
-<outDir>/<mirrored source dir>/<basename>/<basename>-<width>.<ext>
+<outDir>/<mirrored source dir>/<basename>-<width>.<ext>
 <outDir>/bytecut-manifest.json
 <outDir>/.bytecut-cache/        # analysis + estimate cache; ignores itself, never committed
 ```
 Defaults: `outDir = public/_bytecut`, `publicPath = /_bytecut`, adjusted by detected framework.
 The mirrored dir is relative to the **static root** (`public` for Next/Astro/Vite and for static sites
-that have one), so `public/img/hero.jpg` → `<outDir>/img/hero/hero-1920.jpg`, served at
-`/_bytecut/img/hero/hero-1920.jpg`. Sources outside the static root mirror from the project root.
+that have one), so `public/img/hero.jpg` → `<outDir>/img/hero-1920.jpg`, served at
+`/_bytecut/img/hero-1920.jpg`. An image at the top of the static root lands directly in `<outDir>`;
+there is no folder per image, only the source's own folders. Sources outside the static root mirror
+from the project root.
 A static site with no `public/` uses `outDir = _bytecut` and static root `.`.
 
-Videos (and animated GIFs) mirror the same way, one folder per source:
+Videos (and animated GIFs) mirror the same way:
 ```
-<outDir>/<dir>/<basename>/<basename>-<width>.av1.mp4
-<outDir>/<dir>/<basename>/<basename>-<width>.h264.mp4
-<outDir>/<dir>/<basename>/<basename>-poster.avif
+<outDir>/<dir>/<basename>-<width>.av1.mp4
+<outDir>/<dir>/<basename>-<width>.h264.mp4
+<outDir>/<dir>/<basename>-poster.avif
 ```
 `<width>` is the output width after the preset's cap (even, never upscaled).
 
@@ -483,3 +485,4 @@ Keep this list accurate as scripts change.
 - 2026-10-11 — The default image output is a single JPEG (mozjpeg); WebP and AVIF are opt-in via `formats` (confirmed with you) — supersedes the AVIF + WebP default of M1, and the JPEG is the file every browser and tool can open. Video posters stay AVIF.
 - 2026-10-11 — Where the preset asks for `jpg` but the source has real transparency, or the preset is lossless, or a PNG's content is ambiguous, the output is a lossless PNG instead (confirmed with you) — keeps §6.9 (alpha) and §6.8 (ambiguous PNGs stay lossless); `icon` writes PNG.
 - 2026-10-11 — `ImageFormat` is now `jpg | png | webp | avif`, and manifests and plans accept all four — additive: an older manifest of avif/webp still reads.
+- 2026-10-11 — Outputs are written flat: `<outDir>/<source's own folders>/<basename>-<width>.<ext>`, with no folder per image (confirmed with you; videos and posters too) — supersedes the `<basename>/` folder of §4; two sources that would now share a name still abort planning with `OUTPUT_COLLISION`, and outputs of earlier runs become orphans.

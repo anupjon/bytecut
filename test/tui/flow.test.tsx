@@ -110,7 +110,7 @@ describe("running", () => {
         calls.run.push({ sources, presets, outDir });
         const result: RunResult = {
           cancelled: false,
-          warnings: ["img/a/a-640.webp: a file is already there that bytecut did not write"],
+          warnings: ["img/a-640.webp: a file is already there that bytecut did not write"],
           items: [
             {
               source: "a.jpg",
@@ -122,7 +122,7 @@ describe("running", () => {
               status: "done",
               outputs: [
                 {
-                  path: "a/a-640.avif",
+                  path: "a-640.avif",
                   format: "avif",
                   width: 640,
                   height: 1,
@@ -148,7 +148,7 @@ describe("running", () => {
     expect(calls.run[0]!.sources).toEqual(["a.jpg", "b.jpg"]);
     expect(ui.frame()).toContain("1 file written");
     expect(ui.frame()).toContain("Largest size per image");
-    expect(ui.frame()).toContain("warning: img/a/a-640.webp");
+    expect(ui.frame()).toContain("warning: img/a-640.webp");
   });
 
   it("returning from the results rescans the project", async () => {
@@ -175,7 +175,7 @@ describe("running", () => {
       async run(_s, _p, _o, handlers) {
         handlers.onItemStart("a.jpg");
         handlers.onOutput("a.jpg", {
-          path: "a/a-640.avif",
+          path: "a-640.avif",
           format: "avif",
           width: 640,
           height: 1,
@@ -193,7 +193,7 @@ describe("running", () => {
     await ui.press(KEY.enter);
     await ui.waitFor((f) => f.includes("Review:"), "the review");
     await ui.press(KEY.enter);
-    await ui.waitFor((f) => f.includes("a/a-640.avif"), "live progress");
+    await ui.waitFor((f) => f.includes("a-640.avif"), "live progress");
     expect(ui.frame()).toContain("optimizing a.jpg");
     expect(ui.frame()).toContain("0/2");
     expect(ui.frame()).toContain("esc cancel");

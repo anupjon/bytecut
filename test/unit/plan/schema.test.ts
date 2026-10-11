@@ -16,7 +16,7 @@ const plan: Plan = {
       preset: "photo",
       outputs: [
         {
-          path: "assets/a/a-640.avif",
+          path: "assets/a-640.avif",
           format: "avif",
           width: 640,
           lossless: false,
@@ -119,7 +119,7 @@ describe("plan schema: video search", () => {
           outputs: [
             {
               role: "video",
-              path: "m/a/a-1280.h264.mp4",
+              path: "m/a-1280.h264.mp4",
               codec: "h264",
               width: 1280,
               crf: 28,

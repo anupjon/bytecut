@@ -69,7 +69,7 @@ export function plannedVideoOutputs(
   for (const codec of preset.codecs) {
     outputs.push({
       role: "video",
-      path: posix.join(dir, name, `${name}-${width}.${codec}.mp4`),
+      path: posix.join(dir, `${name}-${width}.${codec}.mp4`),
       codec,
       width,
       crf: preset.crf[codec],
@@ -83,7 +83,7 @@ export function plannedVideoOutputs(
   }
   outputs.push({
     role: "poster",
-    path: posix.join(dir, name, `${name}-poster.avif`),
+    path: posix.join(dir, `${name}-poster.avif`),
     format: "avif",
     width,
     quality: preset.poster.quality,

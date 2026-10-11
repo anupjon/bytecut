@@ -80,8 +80,8 @@ describe("bytecut snippet", () => {
       "A small thing",
     ]);
     expect(stdout).toContain("<picture>");
-    expect(stdout).toContain('srcSet="/_bytecut/img/small/small-300.avif 300w"');
-    expect(stdout).toContain('src="/_bytecut/img/small/small-300.webp"');
+    expect(stdout).toContain('srcSet="/_bytecut/img/small-300.avif 300w"');
+    expect(stdout).toContain('src="/_bytecut/img/small-300.webp"');
     expect(stdout).toContain('alt="A small thing"');
     expect(stdout).toContain('loading="lazy"');
     expect(stdout).toMatch(/style=\{\{ backgroundColor: "#[0-9a-f]{6}" \}\}/);
@@ -127,7 +127,7 @@ describe("bytecut snippet", () => {
     const root = await optimized({}, { publicDir: false });
     const { stdout } = await cli(root, ["snippet", "img/small.jpg"]);
     // Static root is the project root, so the mirrored path has no public/ prefix.
-    expect(stdout).toContain('srcset="/_bytecut/img/small/small-300.avif 300w"');
+    expect(stdout).toContain('srcset="/_bytecut/img/small-300.avif 300w"');
     expect(await listFiles(join(root, "_bytecut"))).toContain("bytecut-manifest.json");
   });
 
@@ -164,7 +164,7 @@ describe("bytecut snippet", () => {
     await cp(join(fixtures, "p3.jpg"), join(root, "public/img/my photo #1.jpg"));
     await cli(root, ["optimize", "-y"]);
     const { stdout } = await cli(root, ["snippet", "./public/img/my photo #1.jpg"]);
-    expect(stdout).toContain("/_bytecut/img/my%20photo%20%231/my%20photo%20%231-500.webp");
+    expect(stdout).toContain("/_bytecut/img/my%20photo%20%231-500.webp");
     expect(stdout).not.toContain("my photo");
   });
 

@@ -80,7 +80,7 @@ describe("optimize with a perceptual target (real encoders, built-in scorer)", (
     const manifest = await manifestOf(root);
     const [output] = manifest.sources["public/img/photo.jpg"]!.outputs;
     expect(output).toMatchObject({
-      path: "img/photo/photo-480.webp",
+      path: "img/photo-480.webp",
       width: 480,
       scorer: "wasm",
       search: { metric: "ssimulacra2", target: 75 },
@@ -155,8 +155,8 @@ describe("optimize with a perceptual target (real encoders, built-in scorer)", (
       const [output] = outputs;
       expect(output!.bytes).toBeLessThanOrEqual(3 * 1024);
       expect(output!.width).toBeLessThan(640);
-      expect(output!.path).toBe(`img/photo/photo-${output!.width}.webp`);
-      expect(output!.search?.plannedPath).toBe("img/photo/photo-640.webp");
+      expect(output!.path).toBe(`img/photo-${output!.width}.webp`);
+      expect(output!.search?.plannedPath).toBe("img/photo-640.webp");
       expect(await independentScore(root, output!.path, output!.width)).toBeGreaterThanOrEqual(70);
     } else {
       // The cap may be out of reach for this photo; then it must say so and write nothing.
@@ -172,7 +172,7 @@ describe("optimize with a perceptual target (real encoders, built-in scorer)", (
     expect(r.stdout).toMatch(/not written: .*cap/);
     const files = await listFiles(join(root, "public/_bytecut"));
     expect(files.filter((f) => f.endsWith(".webp"))).toEqual([]);
-    expect(files).not.toContain("img/photo/photo-480.webp");
+    expect(files).not.toContain("img/photo-480.webp");
   }, 240_000);
 
   it("explain shows the search, and a dry run lists it in the plan", async () => {

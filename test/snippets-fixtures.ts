@@ -39,12 +39,12 @@ export function photoEntry(over: Partial<ManifestSource> = {}): ManifestSource {
     preset: "photo",
     placeholder: { kind: "dominant-color", value: "#d828c8" },
     outputs: [
-      image("img/photo/photo-640.avif", "avif", 640, 411),
-      image("img/photo/photo-1280.avif", "avif", 1280, 823),
-      image("img/photo/photo-1400.avif", "avif", 1400, 900),
-      image("img/photo/photo-640.webp", "webp", 640, 411),
-      image("img/photo/photo-1280.webp", "webp", 1280, 823),
-      image("img/photo/photo-1400.webp", "webp", 1400, 900),
+      image("img/photo-640.avif", "avif", 640, 411),
+      image("img/photo-1280.avif", "avif", 1280, 823),
+      image("img/photo-1400.avif", "avif", 1400, 900),
+      image("img/photo-640.webp", "webp", 640, 411),
+      image("img/photo-1280.webp", "webp", 1280, 823),
+      image("img/photo-1400.webp", "webp", 1400, 900),
     ],
     ...over,
   };
@@ -60,10 +60,10 @@ export function heroEntry(): ManifestSource {
     priority: true,
     placeholder: { kind: "dominant-color", value: "#2828c8" },
     outputs: [
-      image("img/hero/hero-1280.avif", "avif", 1280, 689),
-      image("img/hero/hero-2560.avif", "avif", 2560, 1378),
-      image("img/hero/hero-1280.webp", "webp", 1280, 689),
-      image("img/hero/hero-2560.webp", "webp", 2560, 1378),
+      image("img/hero-1280.avif", "avif", 1280, 689),
+      image("img/hero-2560.avif", "avif", 2560, 1378),
+      image("img/hero-1280.webp", "webp", 1280, 689),
+      image("img/hero-2560.webp", "webp", 2560, 1378),
     ],
   };
 }
@@ -116,9 +116,9 @@ export function videoEntry(preset: string, withAudio = false): ManifestVideoSour
     preset,
     placeholder: { kind: "dominant-color", value: "#0808f8" },
     outputs: [
-      video("v/clip/clip-1280.av1.mp4", "av1", `av01.0.05M.08${audio}`),
-      video("v/clip/clip-1280.h264.mp4", "h264", `avc1.64001f${audio}`),
-      poster("v/clip/clip-poster.avif"),
+      video("v/clip-1280.av1.mp4", "av1", `av01.0.05M.08${audio}`),
+      video("v/clip-1280.h264.mp4", "h264", `avc1.64001f${audio}`),
+      poster("v/clip-poster.avif"),
     ],
   };
 }

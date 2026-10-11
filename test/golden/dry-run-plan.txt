@@ -1,16 +1,16 @@
 Plan: 3 images → public/_bytecut
 
 public/img/hero.jpg (19 B, 2400x1200, hero: name "hero" looks like a hero image)
-  img/hero/hero-1920.jpg  (jpg, 1920w, q85)
+  img/hero-1920.jpg  (jpg, 1920w, q85)
 
 public/img/logo.png (19 B, 300x300, icon: flat art (6 colours in sample, uses transparency, name "logo"))
-  img/logo/logo-64.png  (png, 64w, lossless)
-  img/logo/logo-128.png  (png, 128w, lossless)
-  img/logo/logo-256.png  (png, 256w, lossless)
-  img/logo/logo-300.png  (png, 300w, lossless)
+  img/logo-64.png  (png, 64w, lossless)
+  img/logo-128.png  (png, 128w, lossless)
+  img/logo-256.png  (png, 256w, lossless)
+  img/logo-300.png  (png, 300w, lossless)
 
 public/img/mid.jpg (18 B, 1000x700, photo: continuous-tone image)
-  img/mid/mid-1000.jpg  (jpg, 1000w, q80)
+  img/mid-1000.jpg  (jpg, 1000w, q80)
 
 public/img/spinner.webp (23 B, 64x64)
   skipped: animated image

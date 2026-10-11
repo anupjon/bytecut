@@ -372,6 +372,20 @@ go/no-go gate and it passed.
   images, synced side-by-side players for video, and the sizes, CRF/quality, metric and score.
   `Ctrl-C` stops it (SIGINT exit 0 verified); the TUI stops its servers on quit.
 
+## Flat output layout (change after M9)
+
+- Outputs are written as `<outDir>/<source's own folders>/<basename>-<width>.<ext>`: the extra
+  `<basename>/` folder per image is gone, for images, videos and posters. Previously
+  `img/hero/hero-640.avif`; now `img/hero-1920.jpg`. An image at the top of the static root is written
+  straight into the output folder.
+- Two sources that map to the same output path still abort planning with `OUTPUT_COLLISION`.
+  Names stay unambiguous because the width is always in the file name (`photo-1400.jpg` versus
+  `photo-as-png-400.webp`), but a folder of many images now has many files side by side.
+- Outputs from earlier runs sit at the old paths and are reported as orphaned/stale; there is no
+  `--prune` yet, so delete the old output folder once.
+- 181 path expectations in tests were rewritten mechanically and then checked by hand; the goldens
+  were regenerated and only changed in paths.
+
 ## Default format: JPEG (change after M9)
 
 - `photo` and `hero` write **one JPEG** (mozjpeg, q80 / q85) instead of AVIF + WebP. `webp` and `avif`

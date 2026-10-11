@@ -134,7 +134,7 @@ describe("cache (M2)", () => {
   it("regenerates a deleted output", async () => {
     const root = await project();
     await run(root, countingEngine().engine);
-    await rm(join(root, OUT, "assets/small/small-300.avif"));
+    await rm(join(root, OUT, "assets/small-300.avif"));
 
     const dry = await run(root, countingEngine().engine, { execute: false });
     expect(dry.findings.map((f) => f.message)).toEqual([
@@ -144,7 +144,7 @@ describe("cache (M2)", () => {
     const { engine, state } = countingEngine();
     await run(root, engine);
     expect(state.encodes).toBe(2);
-    expect(await listFiles(join(root, OUT))).toContain("assets/small/small-300.avif");
+    expect(await listFiles(join(root, OUT))).toContain("assets/small-300.avif");
   });
 
   it("re-encodes everything with --force", async () => {
@@ -171,8 +171,8 @@ describe("cache (M2)", () => {
     expect(small).toMatchObject({ preset: "photo", width: 300, height: 200 });
     const avif = small.outputs.find((o) => o.format === "avif")!;
     expect(avif).toMatchObject({
-      path: "assets/small/small-300.avif",
-      url: "/static/img/assets/small/small-300.avif",
+      path: "assets/small-300.avif",
+      url: "/static/img/assets/small-300.avif",
       status: "written",
       encoder: expect.stringMatching(/^libaom-av1 \d/),
     });
@@ -186,7 +186,7 @@ describe("guardrail 6: existing outputs we don't own", () => {
   it("leaves a hand-edited output alone and warns, unless --force", async () => {
     const root = await project();
     await run(root, countingEngine().engine);
-    const target = join(root, OUT, "assets/small/small-300.webp");
+    const target = join(root, OUT, "assets/small-300.webp");
     await writeFile(target, "hand edited");
 
     const normal = await run(root, countingEngine().engine);
@@ -204,13 +204,13 @@ describe("guardrail 6: existing outputs we don't own", () => {
     const root = await project();
     const reference = await project();
     await run(reference, countingEngine().engine);
-    const good = await readFile(join(reference, OUT, "assets/small/small-300.avif"));
+    const good = await readFile(join(reference, OUT, "assets/small-300.avif"));
 
     // Identical bytes already on disk (e.g. outputs from an M1 run): no write, no warning.
     await mkdir(join(root, OUT, "assets/small"), { recursive: true });
-    await writeFile(join(root, OUT, "assets/small/small-300.avif"), good);
+    await writeFile(join(root, OUT, "assets/small-300.avif"), good);
     // Different bytes in the way of the webp: must be left alone.
-    await writeFile(join(root, OUT, "assets/small/small-300.webp"), "someone else's file");
+    await writeFile(join(root, OUT, "assets/small-300.webp"), "someone else's file");
 
     const outcome = await run(root, countingEngine().engine);
     const small = outcome.result!.items.find((i) => i.source === "assets/small.jpg")!;
@@ -218,7 +218,7 @@ describe("guardrail 6: existing outputs we don't own", () => {
       avif: "unchanged",
       webp: "protected",
     });
-    expect(await readFile(join(root, OUT, "assets/small/small-300.webp"), "utf8")).toBe(
+    expect(await readFile(join(root, OUT, "assets/small-300.webp"), "utf8")).toBe(
       "someone else's file",
     );
     expect(outcome.result!.warnings).toHaveLength(1);
@@ -226,7 +226,7 @@ describe("guardrail 6: existing outputs we don't own", () => {
     // The protected file is not claimed by the manifest.
     const manifest = await readManifest(root);
     const paths = manifest.sources["assets/small.jpg"]!.outputs.map((o) => o.path);
-    expect(paths).toEqual(["assets/small/small-300.avif"]);
+    expect(paths).toEqual(["assets/small-300.avif"]);
   });
 });
 
@@ -361,10 +361,7 @@ describe("project rules", () => {
 
     const outcome = await run(root, countingEngine().engine, { execute: false });
     const orphans = outcome.findings.filter((f) => f.ruleId === "project/orphaned-output");
-    expect(orphans.map((f) => f.path)).toEqual([
-      "assets/small/small-300.avif",
-      "assets/small/small-300.webp",
-    ]);
+    expect(orphans.map((f) => f.path)).toEqual(["assets/small-300.avif", "assets/small-300.webp"]);
     expect(orphans.every((f) => f.source === "assets/small.jpg")).toBe(true);
 
     // Even after a real run: reported, still not deleted, still in the manifest.

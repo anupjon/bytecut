@@ -49,26 +49,26 @@ describe("the default output is a JPEG", () => {
     const files = (await listFiles(join(root, OUT))).filter((f) => !f.startsWith(".bytecut-cache"));
     expect(files).toEqual([
       "bytecut-manifest.json",
-      "img/gps/gps-700.jpg",
-      "img/p3/p3-500.jpg",
-      "img/photo/photo-1400.jpg",
-      "img/rotated-exif/rotated-exif-500.jpg",
+      "img/gps-700.jpg",
+      "img/p3-500.jpg",
+      "img/photo-1400.jpg",
+      "img/rotated-exif-500.jpg",
     ]);
 
-    const photo = await meta(root, "img/photo/photo-1400.jpg");
+    const photo = await meta(root, "img/photo-1400.jpg");
     expect(photo.format).toBe("jpeg");
     // mozjpeg writes progressive files: smaller, and a visible sign it was used.
     expect(photo.isProgressive).toBe(true);
 
     // Stored 800x500 with orientation 6: comes out upright, with no EXIF block left.
-    const rotated = await meta(root, "img/rotated-exif/rotated-exif-500.jpg");
+    const rotated = await meta(root, "img/rotated-exif-500.jpg");
     expect([rotated.width, rotated.height]).toEqual([500, 800]);
     expect(rotated.exif).toBeUndefined();
-    expect((await meta(root, "img/gps/gps-700.jpg")).exif).toBeUndefined();
+    expect((await meta(root, "img/gps-700.jpg")).exif).toBeUndefined();
 
     // The Display-P3 profile survives (not dropped, not converted).
     const source = await sharp(join(root, "public/img/p3.jpg")).metadata();
-    expect((await meta(root, "img/p3/p3-500.jpg")).icc?.equals(source.icc!)).toBe(true);
+    expect((await meta(root, "img/p3-500.jpg")).icc?.equals(source.icc!)).toBe(true);
 
     expect(await hashAll(join(root, "public/img"), names)).toEqual(before);
     const m = await manifestOf(root);
@@ -86,7 +86,7 @@ describe("the default output is a JPEG", () => {
     );
     await cli(root, ["optimize", "-y"]);
     const files = (await listFiles(join(root, OUT))).filter((f) => f.endsWith(".png"));
-    expect(files).toEqual(["img/flat-alpha/flat-alpha-600.png"]);
+    expect(files).toEqual(["img/flat-alpha-600.png"]);
     const out = await meta(root, files[0]!);
     expect(out.format).toBe("png");
     expect(out.hasAlpha).toBe(true);
@@ -140,17 +140,13 @@ describe("the default output is a JPEG", () => {
     });
     await cli(root, ["optimize", "-y"]);
     const files = (await listFiles(join(root, OUT))).filter((f) => /\.(jpg|webp|avif)$/.test(f));
-    expect(files).toEqual([
-      "img/small/small-300.avif",
-      "img/small/small-300.jpg",
-      "img/small/small-300.webp",
-    ]);
+    expect(files).toEqual(["img/small-300.avif", "img/small-300.jpg", "img/small-300.webp"]);
     const snippet = (await cli(root, ["snippet", "public/img/small.jpg", "--format", "html"]))
       .stdout;
     expect(snippet).toContain("<picture>");
     expect(snippet.indexOf("image/avif")).toBeLessThan(snippet.indexOf("image/webp"));
     // JPEG is the file every browser can show, so it is the <img>.
-    expect(snippet).toMatch(/<img src="\/_bytecut\/img\/small\/small-300\.jpg"/);
+    expect(snippet).toMatch(/<img src="\/_bytecut\/img\/small-300\.jpg"/);
   }, 180_000);
 
   it("emits a plain <img> for a JPEG-only result", async () => {
@@ -159,7 +155,7 @@ describe("the default output is a JPEG", () => {
     const snippet = (await cli(root, ["snippet", "public/img/small.jpg", "--format", "html"]))
       .stdout;
     expect(snippet).not.toContain("<picture>");
-    expect(snippet).toContain('src="/_bytecut/img/small/small-300.jpg"');
+    expect(snippet).toContain('src="/_bytecut/img/small-300.jpg"');
   }, 120_000);
 
   it("honours the configured JPEG quality: lower is smaller", async () => {

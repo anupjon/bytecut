@@ -14,8 +14,8 @@ const item: PlanItem = {
   sourceHeight: 600,
   preset: "photo",
   outputs: [
-    { path: "a/a-640.avif", format: "avif", width: 640, lossless: false, quality: 60, effort: 4 },
-    { path: "a/a-640.webp", format: "webp", width: 640, lossless: false, quality: 78, effort: 4 },
+    { path: "a-640.avif", format: "avif", width: 640, lossless: false, quality: 60, effort: 4 },
+    { path: "a-640.webp", format: "webp", width: 640, lossless: false, quality: 78, effort: 4 },
   ],
 };
 
@@ -41,8 +41,8 @@ const entry = (over: Partial<ManifestSource> = {}): ManifestSource => ({
   height: 600,
   preset: "photo",
   outputs: [
-    recorded({ path: "a/a-640.avif" }),
-    recorded({ path: "a/a-640.webp", format: "webp", quality: 78 }),
+    recorded({ path: "a-640.avif" }),
+    recorded({ path: "a-640.webp", format: "webp", quality: 78 }),
   ],
   ...over,
 });
@@ -79,14 +79,14 @@ describe("checkCache", () => {
   it("misses when a planned output is not recorded", async () => {
     const more = {
       ...item,
-      outputs: [...item.outputs, { ...item.outputs[0]!, path: "a/a-1280.avif", width: 1280 }],
+      outputs: [...item.outputs, { ...item.outputs[0]!, path: "a-1280.avif", width: 1280 }],
     };
     expect(await checkCache(more, entry(), present)).toMatchObject({ reason: "outputs-differ" });
   });
 
   it("still hits when the manifest has extra (orphaned) outputs", async () => {
     const extra = entry();
-    extra.outputs.push(recorded({ path: "a/a-300.avif", width: 300 }));
+    extra.outputs.push(recorded({ path: "a-300.avif", width: 300 }));
     expect(await checkCache(item, extra, present)).toEqual({ kind: "hit" });
   });
 
@@ -109,7 +109,7 @@ describe("checkCache", () => {
 
   it("does not require a file for an already-optimal output", async () => {
     const e = entry();
-    e.outputs[1] = recorded({ path: "a/a-640.webp", format: "webp", quality: 78 });
+    e.outputs[1] = recorded({ path: "a-640.webp", format: "webp", quality: 78 });
     delete e.outputs[1]!.sha256;
     e.outputs[1]!.status = "already-optimal";
     const lookups: string[] = [];
@@ -118,6 +118,6 @@ describe("checkCache", () => {
       return OUT_HASH;
     });
     expect(state).toEqual({ kind: "hit" });
-    expect(lookups).toEqual(["a/a-640.avif"]);
+    expect(lookups).toEqual(["a-640.avif"]);
   });
 });

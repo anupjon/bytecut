@@ -120,7 +120,7 @@ const planOf = (item: PlanItem): Plan => ({
 
 describe("executor with a quality search", () => {
   it("writes the searched quality and records how it was found", async () => {
-    const item = itemWith([out("a/a-1280.avif", 1280, { search })]);
+    const item = itemWith([out("a-1280.avif", 1280, { search })]);
     const { root, outDir, fs } = await setup(item);
     const counter = { full: 0, crop: 0 };
     const result = await runPlan(planOf(item), {
@@ -138,7 +138,7 @@ describe("executor with a quality search", () => {
       scorer: "wasm",
       search: { metric: "ssimulacra2", target: 79 },
     });
-    expect(await listFiles(outDir)).toEqual(["a/a-1280.avif"]);
+    expect(await listFiles(outDir)).toEqual(["a-1280.avif"]);
 
     const manifest = updateManifest(null, planOf(item), result, {});
     expect(manifest.sources["assets/a.jpg"]!.outputs[0]).toMatchObject({
@@ -150,7 +150,7 @@ describe("executor with a quality search", () => {
   });
 
   it("is a cache hit the second time, whatever quality it landed on, and a miss when the target changes", async () => {
-    const item = itemWith([out("a/a-1280.avif", 1280, { search })]);
+    const item = itemWith([out("a-1280.avif", 1280, { search })]);
     const { root, fs } = await setup(item);
     const counter = { full: 0, crop: 0 };
     const first = await runPlan(planOf(item), {
@@ -179,12 +179,12 @@ describe("executor with a quality search", () => {
     expect(second.items[0]!.status).toBe("cached");
     expect(counter.full + counter.crop).toBe(encodesBefore);
 
-    const stricter = itemWith([out("a/a-1280.avif", 1280, { search: { ...search, target: 90 } })]);
+    const stricter = itemWith([out("a-1280.avif", 1280, { search: { ...search, target: 90 } })]);
     expect(await checkCache(stricter, entry, hash)).toEqual({
       kind: "miss",
       reason: "outputs-differ",
     });
-    const dropped = itemWith([out("a/a-1280.avif", 1280)]);
+    const dropped = itemWith([out("a-1280.avif", 1280)]);
     expect(await checkCache(dropped, entry, hash)).toEqual({
       kind: "miss",
       reason: "outputs-differ",
@@ -193,8 +193,8 @@ describe("executor with a quality search", () => {
 
   it("names a stepped-down output by its real width and still recognises it as the planned one", async () => {
     const item = itemWith([
-      out("a/a-640.avif", 640, { search: { ...search, floor: 60, maxBytes: 20_000 } }),
-      out("a/a-1280.avif", 1280, { search: { ...search, floor: 60, maxBytes: 20_000 } }),
+      out("a-640.avif", 640, { search: { ...search, floor: 60, maxBytes: 20_000 } }),
+      out("a-1280.avif", 1280, { search: { ...search, floor: 60, maxBytes: 20_000 } }),
     ]);
     const { root, outDir, fs } = await setup(item);
     const counter = { full: 0, crop: 0 };
@@ -206,17 +206,17 @@ describe("executor with a quality search", () => {
       quality: { scorer: async () => scorer },
     });
     const [small, big] = result.items[0]!.outputs;
-    expect(small).toMatchObject({ path: "a/a-640.avif", status: "written" });
+    expect(small).toMatchObject({ path: "a-640.avif", status: "written" });
     expect(big!.status).toBe("written");
-    expect(big!.path).not.toBe("a/a-1280.avif");
-    expect(big!.path).toMatch(/^a\/a-(\d+)\.avif$/);
+    expect(big!.path).not.toBe("a-1280.avif");
+    expect(big!.path).toMatch(/^a-(\d+)\.avif$/);
     expect(big!.width).toBe(Number(/a-(\d+)/.exec(big!.path)![1]));
     expect(big!.bytes).toBeLessThanOrEqual(20_000);
-    expect(big!.search?.plannedPath).toBe("a/a-1280.avif");
+    expect(big!.search?.plannedPath).toBe("a-1280.avif");
     expect(result.warnings.join("\n")).toMatch(
       /stepped the width down from 1280px to \d+px to fit/,
     );
-    expect(await listFiles(outDir)).toEqual([big!.path, "a/a-640.avif"].sort());
+    expect(await listFiles(outDir)).toEqual([big!.path, "a-640.avif"].sort());
 
     // The manifest keeps it, the cache accepts it, and it is not reported as an orphan.
     const manifest = updateManifest(null, planOf(item), result, {});
@@ -237,7 +237,7 @@ describe("executor with a quality search", () => {
 
   it("reports an unmet constraint, writes nothing for it, and fails the item", async () => {
     const item = itemWith([
-      out("a/a-1280.avif", 1280, { search: { ...search, floor: 70, maxBytes: 1_000 } }),
+      out("a-1280.avif", 1280, { search: { ...search, floor: 70, maxBytes: 1_000 } }),
     ]);
     const { root, outDir, fs } = await setup(item);
     const result = await runPlan(planOf(item), {
@@ -257,7 +257,7 @@ describe("executor with a quality search", () => {
   });
 
   it("never searches a lossless output", async () => {
-    const item = itemWith([out("a/a-1280.avif", 1280, { lossless: true, search })]);
+    const item = itemWith([out("a-1280.avif", 1280, { lossless: true, search })]);
     const { root, fs } = await setup(item);
     const counter = { full: 0, crop: 0 };
     const result = await runPlan(planOf(item), {
@@ -273,7 +273,7 @@ describe("executor with a quality search", () => {
   });
 
   it("without a scorer it uses the fixed quality and says so, instead of failing the run", async () => {
-    const item = itemWith([out("a/a-1280.avif", 1280, { search })]);
+    const item = itemWith([out("a-1280.avif", 1280, { search })]);
     const { root, fs } = await setup(item);
     const result = await runPlan(planOf(item), {
       projectRoot: root,
@@ -288,7 +288,7 @@ describe("executor with a quality search", () => {
   });
 
   it("cancelling during a search records a cancelled output and writes nothing", async () => {
-    const item = itemWith([out("a/a-1280.avif", 1280, { search })]);
+    const item = itemWith([out("a-1280.avif", 1280, { search })]);
     const { root, outDir, fs } = await setup(item);
     const controller = new AbortController();
     const result = await runPlan(planOf(item), {

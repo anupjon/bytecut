@@ -47,11 +47,11 @@ function manifest(outputs: unknown[]): Manifest {
 async function project(over: { outputs?: unknown[] } = {}) {
   const root = await tempDir();
   await mkdir(join(root, "public/img"), { recursive: true });
-  await mkdir(join(root, "out/img/a"), { recursive: true });
+  await mkdir(join(root, "out/img"), { recursive: true });
   await writeFile(join(root, "public/img/a.jpg"), "ORIGINAL-BYTES");
-  await writeFile(join(root, "out/img/a/a-640.webp"), "0123456789A");
+  await writeFile(join(root, "out/img/a-640.webp"), "0123456789A");
   const outputs = over.outputs ?? [
-    output("img/a/a-640.webp", {
+    output("img/a-640.webp", {
       search: { metric: "ssimulacra2", target: 75 },
       score: 76.4,
       scorer: "wasm",
@@ -134,7 +134,7 @@ describe("compare server", () => {
     expect(data.outputs).toHaveLength(1);
     expect(data.outputs[0]).toMatchObject({
       index: 0,
-      path: "img/a/a-640.webp",
+      path: "img/a-640.webp",
       score: 76.4,
       search: { metric: "ssimulacra2", target: 75 },
     });
@@ -178,7 +178,7 @@ describe("compare server", () => {
     const p = await project();
     const server = await start(p);
     const before = {
-      out: await hashAll(join(p.root, "out/img/a"), ["a-640.webp"]),
+      out: await hashAll(join(p.root, "out/img"), ["a-640.webp"]),
       src: await hashAll(join(p.root, "public/img"), ["a.jpg"]),
     };
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
@@ -186,7 +186,7 @@ describe("compare server", () => {
       expect(r.status, method).toBe(405);
     }
     await get(`${server.url}file/0`);
-    expect(await hashAll(join(p.root, "out/img/a"), ["a-640.webp"])).toEqual(before.out);
+    expect(await hashAll(join(p.root, "out/img"), ["a-640.webp"])).toEqual(before.out);
     expect(await hashAll(join(p.root, "public/img"), ["a.jpg"])).toEqual(before.src);
   });
 
@@ -205,20 +205,20 @@ describe("compare server", () => {
   it("serves only outputs the manifest says were written, and none outside the output folder", async () => {
     const p = await project({
       outputs: [
-        output("img/a/a-640.webp"),
-        output("img/a/gone.avif", { status: "already-optimal" }),
-        output("img/a/old.webp", { status: "stale" }),
+        output("img/a-640.webp"),
+        output("img/gone.avif", { status: "already-optimal" }),
+        output("img/old.webp", { status: "stale" }),
         output("../../public/img/a.jpg"),
       ],
     });
     // The files exist: only the manifest's status keeps these two from being served.
-    await writeFile(join(p.root, "out/img/a/gone.avif"), "GONE");
-    await writeFile(join(p.root, "out/img/a/old.webp"), "OLD");
-    await symlink(join(p.root, "public/img/a.jpg"), join(p.root, "out/img/a/link.webp"));
-    p.manifest.sources["public/img/a.jpg"]!.outputs.push(output("img/a/link.webp") as never);
+    await writeFile(join(p.root, "out/img/gone.avif"), "GONE");
+    await writeFile(join(p.root, "out/img/old.webp"), "OLD");
+    await symlink(join(p.root, "public/img/a.jpg"), join(p.root, "out/img/link.webp"));
+    p.manifest.sources["public/img/a.jpg"]!.outputs.push(output("img/link.webp") as never);
     const server = await start(p);
     const data = JSON.parse((await get(`${server.url}data.json`)).body);
-    expect(data.outputs.map((o: { path: string }) => o.path)).toEqual(["img/a/a-640.webp"]);
+    expect(data.outputs.map((o: { path: string }) => o.path)).toEqual(["img/a-640.webp"]);
     expect((await get(`${server.url}file/1`)).status).toBe(404);
   });
 
@@ -227,8 +227,8 @@ describe("compare server", () => {
     await mkdir(join(root, "media"), { recursive: true });
     await mkdir(join(root, "out/media/v"), { recursive: true });
     await writeFile(join(root, "media/v.mp4"), "SRC");
-    await writeFile(join(root, "out/media/v/v-640.h264.mp4"), "MP4");
-    await writeFile(join(root, "out/media/v/v-poster.avif"), "POSTER");
+    await writeFile(join(root, "out/media/v-640.h264.mp4"), "MP4");
+    await writeFile(join(root, "out/media/v-poster.avif"), "POSTER");
     const m: Manifest = {
       version: 3,
       tools: {},
@@ -244,7 +244,7 @@ describe("compare server", () => {
           preset: "content-video",
           outputs: [
             {
-              path: "media/v/v-640.h264.mp4",
+              path: "media/v-640.h264.mp4",
               url: "/x",
               role: "video",
               format: "mp4",
@@ -261,7 +261,7 @@ describe("compare server", () => {
               scorer: "libvmaf",
             },
             {
-              path: "media/v/v-poster.avif",
+              path: "media/v-poster.avif",
               url: "/y",
               role: "poster",
               format: "avif",

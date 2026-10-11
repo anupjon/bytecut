@@ -8,7 +8,7 @@ const F = "b".repeat(64);
 
 const av1: PlannedVideoOutput = {
   role: "video",
-  path: "m/a/a-1280.av1.mp4",
+  path: "m/a-1280.av1.mp4",
   codec: "av1",
   width: 1280,
   crf: 32,
@@ -20,7 +20,7 @@ const av1: PlannedVideoOutput = {
 };
 const h264: PlannedVideoOutput = {
   ...av1,
-  path: "m/a/a-1280.h264.mp4",
+  path: "m/a-1280.h264.mp4",
   codec: "h264",
   crf: 23,
   speed: "slow",
@@ -42,7 +42,7 @@ const item: VideoPlanItem = {
     h264,
     {
       role: "poster",
-      path: "m/a/a-poster.avif",
+      path: "m/a-poster.avif",
       format: "avif",
       width: 1280,
       quality: 55,
@@ -92,7 +92,7 @@ const entry = (over: Partial<ManifestVideoSource> = {}): ManifestVideoSource => 
       audio: "keep",
     }),
     rec({
-      path: "m/a/a-poster.avif",
+      path: "m/a-poster.avif",
       role: "poster",
       format: "avif",
       quality: 55,

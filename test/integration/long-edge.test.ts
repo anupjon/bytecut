@@ -61,19 +61,19 @@ describe("the default size: longest side up to 1920", () => {
 
     const out = join(root, "public/_bytecut/img");
     expect(await listFiles(out)).toEqual([
-      "land/land-1920.webp",
-      "port/port-960.webp",
-      "small-port/small-port-600.webp",
+      "land-1920.webp",
+      "port-960.webp",
+      "small-port-600.webp",
     ]);
     const dims = async (rel: string) => {
       const m = await sharp(join(out, rel)).metadata();
       return [m.width, m.height];
     };
-    expect(await dims("land/land-1920.webp")).toEqual([1920, 960]);
+    expect(await dims("land-1920.webp")).toEqual([1920, 960]);
     // 1500x3000 portrait: the HEIGHT is 1920, the width follows (960).
-    expect(await dims("port/port-960.webp")).toEqual([960, 1920]);
+    expect(await dims("port-960.webp")).toEqual([960, 1920]);
     // Already within the cap: untouched size.
-    expect(await dims("small-port/small-port-600.webp")).toEqual([600, 1000]);
+    expect(await dims("small-port-600.webp")).toEqual([600, 1000]);
 
     expect(
       await hashAll(join(root, "public/img"), ["land.jpg", "port.jpg", "small-port.jpg"]),

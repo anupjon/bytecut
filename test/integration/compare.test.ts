@@ -63,7 +63,7 @@ describe("bytecut compare", () => {
       const data = (await (await fetch(`${base}data.json`)).json()) as {
         outputs: Array<{ index: number; path: string; bytes: number }>;
       };
-      expect(data.outputs.map((o) => o.path)).toEqual(["img/photo/photo-480.webp"]);
+      expect(data.outputs.map((o) => o.path)).toEqual(["img/photo-480.webp"]);
 
       const output = Buffer.from(await (await fetch(`${base}file/0`)).arrayBuffer());
       expect(output.byteLength).toBe(data.outputs[0]!.bytes);

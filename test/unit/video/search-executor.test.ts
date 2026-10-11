@@ -181,7 +181,7 @@ describe("video execution with a perceptual search", () => {
       "unmet",
     ]);
     // Poster is independent of the constraint and still made; no video file exists.
-    expect(await listFiles(ctx.outDir)).toEqual(["media/clip/clip-poster.avif"]);
+    expect(await listFiles(ctx.outDir)).toEqual(["media/clip-poster.avif"]);
     expect(result.warnings.join("\n")).toMatch(/below the target 70/);
     // A bounded number of retries per codec, not an unbounded loop.
     expect(ctx.calls.encodes.filter((e) => e.encoder === "libsvtav1").length).toBeLessThanOrEqual(
@@ -203,7 +203,7 @@ describe("video execution with a perceptual search", () => {
     expect(v.outputs[0]!.error).toMatch(
       /ssimulacra2 reached only 50\.0 at crf 10, below the target 70/,
     );
-    expect(await listFiles(ctx.outDir)).toEqual(["media/clip/clip-poster.avif"]);
+    expect(await listFiles(ctx.outDir)).toEqual(["media/clip-poster.avif"]);
   });
 
   it("scores a short video whole and does not repeat the encode to confirm it", async () => {

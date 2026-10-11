@@ -91,7 +91,7 @@ describe("TUI against the real session", () => {
 
     const outputs = await listFiles(join(root, OUT));
     expect(outputs).toContain("bytecut-manifest.json");
-    expect(outputs.some((f) => f.startsWith("img/p0/") && f.endsWith(".jpg"))).toBe(true);
+    expect(outputs.some((f) => f.startsWith("img/p0-") && f.endsWith(".jpg"))).toBe(true);
     // Sources are untouched (§6.1).
     expect(await hashAll(join(root, "public/img"), Object.keys(before))).toEqual(before);
   }, 120_000);
@@ -264,9 +264,9 @@ describe.skipIf(!FFMPEG)("TUI with a real video", () => {
     const out = await listFiles(join(root, "public/_bytecut"));
     expect(out).toEqual(
       expect.arrayContaining([
-        "media/heavy/heavy-320.av1.mp4",
-        "media/heavy/heavy-320.h264.mp4",
-        "media/heavy/heavy-poster.avif",
+        "media/heavy-320.av1.mp4",
+        "media/heavy-320.h264.mp4",
+        "media/heavy-poster.avif",
         "bytecut-manifest.json",
       ]),
     );

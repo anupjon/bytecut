@@ -119,7 +119,7 @@ suite("video pipeline with real ffmpeg (M5)", () => {
       ["poster", "-", "written"],
     ]);
 
-    const dir = join(root, OUT, "media/heavy");
+    const dir = join(root, OUT, "media");
     const av1 = await probeFile(join(dir, "heavy-320.av1.mp4"));
     const h264 = await probeFile(join(dir, "heavy-320.h264.mp4"));
     expect(av1).toMatchObject({
@@ -159,7 +159,7 @@ suite("video pipeline with real ffmpeg (M5)", () => {
     const root = await project(["heavy-60fps.mp4"]);
     const outcome = await runOptimize(root);
     expect(outcome.result!.videos![0]!.preset).toBe("background-video");
-    const h264 = await probeFile(join(root, OUT, "media/heavy-60fps/heavy-60fps-320.h264.mp4"));
+    const h264 = await probeFile(join(root, OUT, "media/heavy-60fps-320.h264.mp4"));
     expect(h264.hasAudio).toBe(false);
     expect(h264.fps).toBe(30); // 60 → capped
     expect(h264.duration).toBeCloseTo(2, 0);
@@ -168,7 +168,7 @@ suite("video pipeline with real ffmpeg (M5)", () => {
   it("keeps the audio track for content", async () => {
     const root = await project(["heavy.mp4"]);
     await runOptimize(root);
-    const a = await probeFile(join(root, OUT, "media/heavy/heavy-320.h264.mp4"));
+    const a = await probeFile(join(root, OUT, "media/heavy-320.h264.mp4"));
     expect(a.hasAudio).toBe(true);
   });
 
@@ -288,7 +288,7 @@ suite("video pipeline with real ffmpeg (M5)", () => {
       crf: 32,
       speed: "6",
       audio: "keep",
-      url: "/_bytecut/media/heavy/heavy-320.av1.mp4",
+      url: "/_bytecut/media/heavy-320.av1.mp4",
       status: "written",
     });
     expect(av1.encoder).toMatch(/^libsvtav1 \(ffmpeg [\d.]+/);
@@ -402,11 +402,11 @@ process.exit(r.status ?? 1);
       expect(outcome.result!.warnings.join("\n")).toMatch(/AV1 encoder not available/);
       expect(outcome.notes.join("\n")).toMatch(/No AV1 encoder.*AV1 outputs will be skipped/);
 
-      const files = await listFiles(join(root, OUT, "media/heavy"));
-      expect(files).toEqual(["heavy-320.h264.mp4", "heavy-poster.avif"]);
-      expect((await probeFile(join(root, OUT, "media/heavy/heavy-320.h264.mp4"))).codec).toBe(
-        "h264",
+      const files = (await listFiles(join(root, OUT, "media"))).filter((f) =>
+        f.startsWith("heavy-"),
       );
+      expect(files).toEqual(["heavy-320.h264.mp4", "heavy-poster.avif"]);
+      expect((await probeFile(join(root, OUT, "media/heavy-320.h264.mp4"))).codec).toBe("h264");
 
       // And it does not keep trying: the next run is cached, not a re-encode.
       let encodes = 0;
@@ -442,7 +442,7 @@ process.exit(r.status ?? 1);
 
     // The image went through untouched by the missing ffmpeg.
     const files = await listFiles(join(root, OUT));
-    expect(files.some((f) => f.startsWith("media/small/") && f.endsWith(".jpg"))).toBe(true);
+    expect(files.some((f) => f.startsWith("media/small-") && f.endsWith(".jpg"))).toBe(true);
     expect(files.some((f) => f.endsWith(".mp4"))).toBe(false);
     // Nothing about the videos is recorded as done.
     const m = parseManifest(await readFile(join(root, OUT, "bytecut-manifest.json"), "utf8"));

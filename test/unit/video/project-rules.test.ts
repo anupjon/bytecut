@@ -14,7 +14,7 @@ const F = "b".repeat(64);
 
 const av1: PlannedVideoOutput = {
   role: "video",
-  path: "m/a/a-1280.av1.mp4",
+  path: "m/a-1280.av1.mp4",
   codec: "av1",
   width: 1280,
   crf: 32,
@@ -26,7 +26,7 @@ const av1: PlannedVideoOutput = {
 };
 const h264: PlannedVideoOutput = {
   ...av1,
-  path: "m/a/a-1280.h264.mp4",
+  path: "m/a-1280.h264.mp4",
   codec: "h264",
   crf: 23,
   speed: "slow",
@@ -177,10 +177,10 @@ describe("project/orphaned-output for videos", () => {
   });
 
   it("reports outputs the current preset no longer produces", async () => {
-    const extra = rec({ ...av1, path: "m/a/a-1920.av1.mp4" }, "libsvtav1 (ffmpeg 6.1.1)");
+    const extra = rec({ ...av1, path: "m/a-1920.av1.mp4" }, "libsvtav1 (ffmpeg 6.1.1)");
     const m = manifest({ "m/a.mp4": entry({ outputs: [...entry().outputs, extra] }) });
     const f = await orphanedOutput.check(ctx({ manifest: m }));
-    expect(f.map((x) => x.path)).toEqual(["m/a/a-1920.av1.mp4"]);
+    expect(f.map((x) => x.path)).toEqual(["m/a-1920.av1.mp4"]);
   });
 
   it("does not judge videos outside this run's plan when the file still exists", async () => {

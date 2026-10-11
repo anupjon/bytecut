@@ -26,9 +26,9 @@ describe("plannedVideoOutputs", () => {
       probeOf({ width: 1280, height: 720 }),
     );
     expect(out.map((o) => o.path)).toEqual([
-      "media/clip/clip-1280.av1.mp4",
-      "media/clip/clip-1280.h264.mp4",
-      "media/clip/clip-poster.avif",
+      "media/clip-1280.av1.mp4",
+      "media/clip-1280.h264.mp4",
+      "media/clip-poster.avif",
     ]);
     expect(out.map((o) => o.role)).toEqual(["video", "video", "poster"]);
   });
@@ -101,7 +101,7 @@ describe("buildVideoItems", () => {
       preset: "gif-to-video",
       classification: { reason: "animated GIF" },
     });
-    expect(item!.outputs[0]!.path).toBe("m/spin/spin-1280.av1.mp4");
+    expect(item!.outputs[0]!.path).toBe("m/spin-1280.av1.mp4");
   });
 
   it("lists every file as 'needs ffmpeg' with the install text when there is no engine", async () => {
@@ -180,7 +180,7 @@ describe("buildVideoItems", () => {
       buildVideoItems({ ...common(root), files: ["/elsewhere/x.mp4"], engine }),
     ).rejects.toMatchObject({ code: "SOURCE_OUTSIDE_PROJECT" });
 
-    // a.mp4 and a.gif both want a/a-1280.* names in the same directory.
+    // a.mp4 and a.gif both want a-1280.* names in the same directory.
     await expect(
       buildVideoItems({ ...common(root), files: [abs(root, "a.mp4"), abs(root, "a.gif")], engine }),
     ).rejects.toMatchObject({ code: "OUTPUT_COLLISION" });
@@ -194,7 +194,7 @@ describe("buildVideoItems", () => {
         ...common(root),
         files: [abs(root, "a.mp4")],
         engine,
-        claimed: new Set(["a/a-poster.avif"]),
+        claimed: new Set(["a-poster.avif"]),
       }),
     ).rejects.toMatchObject({ code: "OUTPUT_COLLISION" });
   });
@@ -207,7 +207,7 @@ describe("buildVideoItems", () => {
       files: [abs(root, "public/v/a.mp4")],
       engine,
     });
-    expect(item!.outputs[0]!.path).toBe("v/a/a-1280.av1.mp4");
+    expect(item!.outputs[0]!.path).toBe("v/a-1280.av1.mp4");
   });
 
   it("uses the probe callback (so callers can cache by hash)", async () => {

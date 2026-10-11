@@ -21,15 +21,13 @@ describe("image snippets", () => {
     expect(avif).toBeGreaterThan(-1);
     expect(avif).toBeLessThan(webp);
     expect(code).toContain(
-      'srcset="/_bytecut/img/photo/photo-640.avif 640w, /_bytecut/img/photo/photo-1280.avif 1280w, /_bytecut/img/photo/photo-1400.avif 1400w"',
+      'srcset="/_bytecut/img/photo-640.avif 640w, /_bytecut/img/photo-1280.avif 1280w, /_bytecut/img/photo-1400.avif 1400w"',
     );
   });
 
   it("falls back to the LARGEST WebP and takes its dimensions (confirmed decision)", () => {
     const { code } = photo();
-    expect(code).toContain(
-      '<img src="/_bytecut/img/photo/photo-1400.webp" width="1400" height="900"',
-    );
+    expect(code).toContain('<img src="/_bytecut/img/photo-1400.webp" width="1400" height="900"');
   });
 
   it("is lazy and async by default, and explicit about sizes", () => {
@@ -96,7 +94,7 @@ describe("image snippets", () => {
   it("leaves out outputs that were never written", () => {
     const entry = photoEntry();
     entry.outputs.push(
-      image("img/photo/photo-1920.webp", "webp", 1920, 1234, { status: "already-optimal" }),
+      image("img/photo-1920.webp", "webp", 1920, 1234, { status: "already-optimal" }),
     );
     const { code } = build([{ "public/img/photo.jpg": entry }], "public/img/photo.jpg");
     expect(code).not.toContain("1920");
@@ -130,7 +128,7 @@ describe("image snippets", () => {
     const entry = photoEntry();
     for (const o of entry.outputs) o.url = o.url.replace("img/photo", "my img/a#b");
     const { code } = build([{ "public/img/photo.jpg": entry }], "public/img/photo.jpg");
-    expect(code).toContain("/_bytecut/my%20img/a%23b/photo-640.avif 640w");
+    expect(code).toContain("/_bytecut/my%20img/a%23b-640.avif 640w");
     expect(code).not.toContain("my img");
   });
 
@@ -180,7 +178,7 @@ describe("video snippets", () => {
 
   it("has the poster and the output dimensions", () => {
     const { code } = vid("content-video");
-    expect(code).toContain('poster="/_bytecut/v/clip/clip-poster.avif"');
+    expect(code).toContain('poster="/_bytecut/v/clip-poster.avif"');
     expect(code).toContain('width="1280" height="720"');
   });
 

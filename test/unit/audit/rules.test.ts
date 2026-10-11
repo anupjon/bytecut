@@ -17,14 +17,14 @@ const item = (over: Partial<PlanItem> = {}): PlanItem => ({
   sourceHeight: 600,
   preset: "photo",
   outputs: [
-    { path: "a/a-640.avif", format: "avif", width: 640, lossless: false, quality: 60, effort: 4 },
+    { path: "a-640.avif", format: "avif", width: 640, lossless: false, quality: 60, effort: 4 },
   ],
   ...over,
 });
 
 const output = (over: Partial<ManifestOutput> = {}): ManifestOutput => ({
-  path: "a/a-640.avif",
-  url: "/_bytecut/a/a-640.avif",
+  path: "a-640.avif",
+  url: "/_bytecut/a-640.avif",
   format: "avif",
   width: 640,
   height: 480,
@@ -147,7 +147,7 @@ describe("project/orphaned-output", () => {
     expect(findings).toEqual([
       expect.objectContaining({
         source: "gone.jpg",
-        path: "a/a-640.avif",
+        path: "a-640.avif",
         message: "source no longer exists",
         severity: "info",
       }),
@@ -156,10 +156,10 @@ describe("project/orphaned-output", () => {
 
   it("reports outputs the current plan no longer produces", async () => {
     const m = manifest({
-      "a.jpg": entry({ outputs: [output(), output({ path: "a/a-300.avif", width: 300 })] }),
+      "a.jpg": entry({ outputs: [output(), output({ path: "a-300.avif", width: 300 })] }),
     });
     const findings = await orphanedOutput.check(ctx({ manifest: m }));
-    expect(findings.map((f) => f.path)).toEqual(["a/a-300.avif"]);
+    expect(findings.map((f) => f.path)).toEqual(["a-300.avif"]);
   });
 
   it("does not judge sources outside this run's scope when their file exists", async () => {

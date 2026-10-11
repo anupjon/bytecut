@@ -155,7 +155,7 @@ export async function buildPlan(options: BuildPlanOptions): Promise<Plan> {
     const choice = options.choosePreset(source, analysis);
     const { preset } = choice;
 
-    // Mirrored layout: <mirrored source dir>/<basename>/<basename>-<width>.<ext>
+    // Mirrored layout: <mirrored source dir>/<basename>-<width>.<ext>
     const dir = mirroredDir(source, staticRoot);
     const name = posix.basename(source, posix.extname(source));
     const outputs: PlannedOutput[] = [];
@@ -166,7 +166,7 @@ export async function buildPlan(options: BuildPlanOptions): Promise<Plan> {
         // PNG output is lossless by nature.
         const lossless =
           format === "png" || (preset.lossless ?? (analysis.format === "png" && format === "webp"));
-        const path = posix.join(dir, name, `${name}-${width}.${format}`);
+        const path = posix.join(dir, `${name}-${width}.${format}`);
         const owner = claimed.get(path);
         if (owner !== undefined) {
           throw new BytecutError(
