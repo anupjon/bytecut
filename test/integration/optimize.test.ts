@@ -10,7 +10,7 @@ import { sharpImageEngine } from "../../src/core/engines/image.js";
 import { optimize as optimizeCommand } from "../../src/core/commands/optimize.js";
 import type { RunResult } from "../../src/core/execute/run.js";
 import { collectAssets } from "../../src/core/scan/collect.js";
-import { hashAll, listFiles, tempDir } from "../helpers.js";
+import { MODERN_POLICY, hashAll, listFiles, tempDir } from "../helpers.js";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(import.meta.dirname, "../..");
@@ -54,6 +54,9 @@ async function optimize(root: string, inputs: string[] = ["assets"], outRel = "p
     inputs,
     outDir: outRel,
     execute: true,
+    // These assertions are about AVIF and WebP, which are opt-in; the default JPEG output has
+    // its own tests below and in test/integration/long-edge.test.ts.
+    policy: MODERN_POLICY,
   });
   return {
     outDir: resolve(root, outRel),
@@ -76,13 +79,10 @@ describe("optimize (M1)", () => {
     const files = await listFiles(outDir);
     expect(files).toEqual(
       expect.arrayContaining([
-        "assets/photo/photo-640.avif",
-        "assets/photo/photo-640.webp",
-        "assets/photo/photo-1280.avif",
-        "assets/photo/photo-1280.webp",
         "assets/photo/photo-1400.avif",
+        "assets/photo/photo-1400.webp",
         "assets/oversized/oversized-1920.webp",
-        "assets/oversized/oversized-2560.avif",
+        "assets/oversized/oversized-1920.avif",
         "assets/flat-alpha/flat-alpha-512.avif",
       ]),
     );
@@ -102,25 +102,26 @@ describe("optimize (M1)", () => {
   it("produces the right formats and dimensions, never upscaling", async () => {
     const { outDir } = shared;
 
-    const avif = await meta(outDir, "assets/photo/photo-1280.avif");
+    // 1400px source: within the 1920 cap, so one size per format at its native width.
+    const avif = await meta(outDir, "assets/photo/photo-1400.avif");
     expect(avif.format).toBe("heif");
     expect(avif.compression).toBe("av1");
-    expect(avif.width).toBe(1280);
+    expect(avif.width).toBe(1400);
 
-    const webp = await meta(outDir, "assets/photo/photo-640.webp");
+    const webp = await meta(outDir, "assets/photo/photo-1400.webp");
     expect(webp.format).toBe("webp");
-    expect(webp.width).toBe(640);
-
-    // 1400px source: largest output is its native width, not 1920.
-    expect((await meta(outDir, "assets/photo/photo-1400.avif")).width).toBe(1400);
-    expect(await listFiles(join(outDir, "assets/photo"))).not.toContain("photo-1920.avif");
+    expect(webp.width).toBe(1400);
+    expect(await listFiles(join(outDir, "assets/photo"))).toEqual([
+      "photo-1400.avif",
+      "photo-1400.webp",
+    ]);
 
     // 300px source: one output at native width.
     expect((await meta(outDir, "assets/small/small-300.webp")).width).toBe(300);
 
-    // Oversized source is classified as hero (wide + large), which tops out at 2560.
-    expect((await meta(outDir, "assets/oversized/oversized-2560.avif")).width).toBe(2560);
-    expect(await listFiles(join(outDir, "assets/oversized"))).toHaveLength(8);
+    // Oversized landscape source: capped at 1920 wide, a single size per format.
+    expect((await meta(outDir, "assets/oversized/oversized-1920.avif")).width).toBe(1920);
+    expect(await listFiles(join(outDir, "assets/oversized"))).toHaveLength(2);
 
     // Flat art is classified as icon: small widths, none above 512 even for a 600px source.
     expect(await listFiles(join(outDir, "assets/flat-alpha"))).toEqual([
@@ -149,7 +150,7 @@ describe("optimize (M1)", () => {
     const source = await sharp(join(root, "assets/gps.jpg")).metadata();
     expect(source.exif).toBeDefined(); // precondition: the fixture really carries EXIF
 
-    for (const rel of ["assets/gps/gps-640.avif", "assets/gps/gps-640.webp"]) {
+    for (const rel of ["assets/gps/gps-700.avif", "assets/gps/gps-700.webp"]) {
       expect((await meta(outDir, rel)).exif).toBeUndefined();
     }
   });
@@ -246,7 +247,7 @@ describe("bytecut optimize CLI (headless)", () => {
     const root = await newProject();
     const { stdout } = await cli(root, ["optimize", "assets/photo.jpg"]);
     expect(stdout).toContain("Plan: 1 image");
-    expect(stdout).toContain("assets/photo/photo-640.avif");
+    expect(stdout).toContain("assets/photo/photo-1400.jpg");
     expect(stdout).toContain("Dry run");
     expect(await listFiles(join(root, "_bytecut"))).toEqual([]);
   });
@@ -256,7 +257,7 @@ describe("bytecut optimize CLI (headless)", () => {
     const before = await hashAll(join(root, "assets"), IMAGE_FIXTURES);
     const { stdout } = await cli(root, ["optimize", "assets/small.jpg", "assets/p3.jpg", "-y"]);
     expect(stdout).toMatch(/Total: \d+ files written/);
-    expect(await listFiles(join(root, "_bytecut"))).toContain("assets/small/small-300.avif");
+    expect(await listFiles(join(root, "_bytecut"))).toContain("assets/small/small-300.jpg");
     expect(await hashAll(join(root, "assets"), IMAGE_FIXTURES)).toEqual(before);
   });
 
@@ -266,8 +267,7 @@ describe("bytecut optimize CLI (headless)", () => {
     expect(await listFiles(join(root, "dist-img"))).toEqual([
       ".bytecut-cache/.gitignore",
       ".bytecut-cache/cache.json",
-      "assets/small/small-300.avif",
-      "assets/small/small-300.webp",
+      "assets/small/small-300.jpg",
       "bytecut-manifest.json",
     ]);
   });
@@ -330,11 +330,10 @@ describe("bytecut optimize CLI: plans and manifest (M2)", () => {
     expect(await listFiles(join(root, "_bytecut"))).toEqual([]);
 
     const ran = await cli(root, ["optimize", "--plan", "saved-plan.json", "-y"]);
-    expect(ran.stdout).toMatch(/Total: 2 files written/);
+    expect(ran.stdout).toMatch(/Total: 1 files? written/);
     // A saved plan is executed without analysing anything, so no analysis cache is written.
     expect(await listFiles(join(root, "_bytecut"))).toEqual([
-      "assets/small/small-300.avif",
-      "assets/small/small-300.webp",
+      "assets/small/small-300.jpg",
       "bytecut-manifest.json",
     ]);
   });
@@ -373,7 +372,7 @@ describe("bytecut optimize CLI: plans and manifest (M2)", () => {
     const root = await newProject();
     const { stdout } = await cli(root, ["optimize", "assets/small.jpg", "--dry-run", "--json"]);
     const plan = JSON.parse(stdout);
-    plan.items[0].outputs[0].path = "../../escaped.avif";
+    plan.items[0].outputs[0].path = "../../escaped.jpg";
     await writeFile(join(root, "evil.json"), JSON.stringify(plan));
 
     const error = await fail(cli(root, ["optimize", "--plan", "evil.json", "-y"]));
@@ -424,22 +423,20 @@ describe("zero-config CLI: detection and audit (M3)", () => {
     const root = await nextProject();
     const { stdout, stderr } = await cli(root, ["optimize", "-y"]);
     expect(stderr).toContain("Detected Next.js: scanning public → public/_bytecut");
-    expect(stdout).toMatch(/Total: 4 files written/);
+    expect(stdout).toMatch(/Total: 2 files written/);
     expect(await listFiles(join(root, "public/_bytecut"))).toEqual([
       ".bytecut-cache/.gitignore",
       ".bytecut-cache/cache.json",
       "bytecut-manifest.json",
-      "img/p3/p3-500.avif",
-      "img/p3/p3-500.webp",
-      "img/small/small-300.avif",
-      "img/small/small-300.webp",
+      "img/p3/p3-500.jpg",
+      "img/small/small-300.jpg",
     ]);
     const manifest = JSON.parse(
       await readFile(join(root, "public/_bytecut/bytecut-manifest.json"), "utf8"),
     );
     expect(manifest.version).toBe(3);
     expect(manifest.sources["public/img/small.jpg"].outputs[0].url).toBe(
-      "/_bytecut/img/small/small-300.avif",
+      "/_bytecut/img/small/small-300.jpg",
     );
   });
 

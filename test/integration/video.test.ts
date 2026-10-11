@@ -442,7 +442,7 @@ process.exit(r.status ?? 1);
 
     // The image went through untouched by the missing ffmpeg.
     const files = await listFiles(join(root, OUT));
-    expect(files.some((f) => f.startsWith("media/small/") && f.endsWith(".avif"))).toBe(true);
+    expect(files.some((f) => f.startsWith("media/small/") && f.endsWith(".jpg"))).toBe(true);
     expect(files.some((f) => f.endsWith(".mp4"))).toBe(false);
     // Nothing about the videos is recorded as done.
     const m = parseManifest(await readFile(join(root, OUT, "bytecut-manifest.json"), "utf8"));

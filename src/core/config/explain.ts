@@ -5,7 +5,7 @@ import { classifyVideo } from "../classify/video.js";
 import type { ImageEngine } from "../engines/types.js";
 import { toPosix } from "../posix.js";
 import { formatBytes } from "../units.js";
-import { mirroredDir, targetWidths } from "../plan/build.js";
+import { mirroredDir, outputWidths } from "../plan/build.js";
 import { plannedVideoOutputs } from "../plan/video.js";
 import type { ImagePreset } from "../presets/photo.js";
 import { getVideoPreset, type VideoPreset } from "../presets/video.js";
@@ -148,7 +148,7 @@ export async function explainFile(options: ExplainOptions): Promise<Explanation>
       const dir = mirroredDir(source, config.project.staticRoot);
       const name = posix.basename(source, posix.extname(source));
       const outputs = resolved
-        ? targetWidths(resolved.widths, analysis.width).flatMap((w) =>
+        ? outputWidths(resolved, analysis.width, analysis.height).flatMap((w) =>
             resolved.formats.map((f) => posix.join(dir, name, `${name}-${w}.${f}`)),
           )
         : [];
@@ -210,7 +210,11 @@ export function formatExplanation(e: Explanation): string {
   }
   const r = e.resolved;
   if (r && "widths" in r) {
-    lines.push(`  widths:   ${r.widths.join(", ")} (never above the source)`);
+    lines.push(
+      r.maxEdge !== undefined
+        ? `  size:     longest side up to ${r.maxEdge}px (width if landscape, height if portrait; never above the source)`
+        : `  widths:   ${r.widths.join(", ")} (never above the source)`,
+    );
     lines.push(`  formats:  ${r.formats.join(", ")}`);
     for (const f of r.formats) {
       const lossless = r.lossless ? ", lossless" : "";

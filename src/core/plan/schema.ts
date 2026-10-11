@@ -22,11 +22,11 @@ const safeRelativePath = z
 const outputSchema = z
   .object({
     path: safeRelativePath,
-    format: z.enum(["avif", "webp"]),
+    format: z.enum(["jpg", "png", "webp", "avif"]),
     width: z.number().int().positive(),
     lossless: z.boolean(),
     quality: z.number().int().min(1).max(100),
-    effort: z.number().int().min(0).max(9),
+    effort: z.number().int().min(0).max(10),
     search: z
       .object({
         metric: z.literal("ssimulacra2"),

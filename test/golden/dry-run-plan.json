@@ -16,68 +16,12 @@
       },
       "outputs": [
         {
-          "path": "img/hero/hero-640.avif",
-          "format": "avif",
-          "width": 640,
-          "lossless": false,
-          "quality": 65,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-640.webp",
-          "format": "webp",
-          "width": 640,
-          "lossless": false,
-          "quality": 82,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-1280.avif",
-          "format": "avif",
-          "width": 1280,
-          "lossless": false,
-          "quality": 65,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-1280.webp",
-          "format": "webp",
-          "width": 1280,
-          "lossless": false,
-          "quality": 82,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-1920.avif",
-          "format": "avif",
+          "path": "img/hero/hero-1920.jpg",
+          "format": "jpg",
           "width": 1920,
           "lossless": false,
-          "quality": 65,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-1920.webp",
-          "format": "webp",
-          "width": 1920,
-          "lossless": false,
-          "quality": 82,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-2400.avif",
-          "format": "avif",
-          "width": 2400,
-          "lossless": false,
-          "quality": 65,
-          "effort": 4
-        },
-        {
-          "path": "img/hero/hero-2400.webp",
-          "format": "webp",
-          "width": 2400,
-          "lossless": false,
-          "quality": 82,
-          "effort": 4
+          "quality": 85,
+          "effort": 0
         }
       ]
     },
@@ -94,68 +38,36 @@
       },
       "outputs": [
         {
-          "path": "img/logo/logo-64.avif",
-          "format": "avif",
+          "path": "img/logo/logo-64.png",
+          "format": "png",
           "width": 64,
           "lossless": true,
-          "quality": 80,
-          "effort": 4
+          "quality": 100,
+          "effort": 7
         },
         {
-          "path": "img/logo/logo-64.webp",
-          "format": "webp",
-          "width": 64,
-          "lossless": true,
-          "quality": 90,
-          "effort": 4
-        },
-        {
-          "path": "img/logo/logo-128.avif",
-          "format": "avif",
+          "path": "img/logo/logo-128.png",
+          "format": "png",
           "width": 128,
           "lossless": true,
-          "quality": 80,
-          "effort": 4
+          "quality": 100,
+          "effort": 7
         },
         {
-          "path": "img/logo/logo-128.webp",
-          "format": "webp",
-          "width": 128,
-          "lossless": true,
-          "quality": 90,
-          "effort": 4
-        },
-        {
-          "path": "img/logo/logo-256.avif",
-          "format": "avif",
+          "path": "img/logo/logo-256.png",
+          "format": "png",
           "width": 256,
           "lossless": true,
-          "quality": 80,
-          "effort": 4
+          "quality": 100,
+          "effort": 7
         },
         {
-          "path": "img/logo/logo-256.webp",
-          "format": "webp",
-          "width": 256,
-          "lossless": true,
-          "quality": 90,
-          "effort": 4
-        },
-        {
-          "path": "img/logo/logo-300.avif",
-          "format": "avif",
+          "path": "img/logo/logo-300.png",
+          "format": "png",
           "width": 300,
           "lossless": true,
-          "quality": 80,
-          "effort": 4
-        },
-        {
-          "path": "img/logo/logo-300.webp",
-          "format": "webp",
-          "width": 300,
-          "lossless": true,
-          "quality": 90,
-          "effort": 4
+          "quality": 100,
+          "effort": 7
         }
       ]
     },
@@ -172,36 +84,12 @@
       },
       "outputs": [
         {
-          "path": "img/mid/mid-640.avif",
-          "format": "avif",
-          "width": 640,
-          "lossless": false,
-          "quality": 60,
-          "effort": 4
-        },
-        {
-          "path": "img/mid/mid-640.webp",
-          "format": "webp",
-          "width": 640,
-          "lossless": false,
-          "quality": 78,
-          "effort": 4
-        },
-        {
-          "path": "img/mid/mid-1000.avif",
-          "format": "avif",
+          "path": "img/mid/mid-1000.jpg",
+          "format": "jpg",
           "width": 1000,
           "lossless": false,
-          "quality": 60,
-          "effort": 4
-        },
-        {
-          "path": "img/mid/mid-1000.webp",
-          "format": "webp",
-          "width": 1000,
-          "lossless": false,
-          "quality": 78,
-          "effort": 4
+          "quality": 80,
+          "effort": 0
         }
       ]
     },

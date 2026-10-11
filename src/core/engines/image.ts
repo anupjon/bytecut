@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import type { ImageFormat } from "../presets/photo.js";
 import { componentsFor, encodeBlurhash } from "../placeholders/blurhash.js";
 import type { Placeholder, PlaceholderKind } from "../placeholders/types.js";
@@ -56,6 +56,8 @@ function encoderNames(): Record<ImageFormat, string> {
   const v = sharp.versions as Record<string, string | undefined>;
   // sharp's prebuilt libvips encodes AVIF through libheif with libaom.
   return {
+    jpg: `mozjpeg ${v.mozjpeg ?? "unknown"}`,
+    png: `libpng ${v.png ?? "unknown"}`,
     avif: `libaom-av1 ${v.aom ?? "unknown"}`,
     webp: `libwebp ${v.webp ?? "unknown"}`,
   };
@@ -89,6 +91,24 @@ async function makePlaceholder(input: Buffer, kind: PlaceholderKind): Promise<Pl
       const [cx, cy] = componentsFor(info.width, info.height);
       return { kind, value: encodeBlurhash(data, info.width, info.height, cx, cy) };
     }
+  }
+}
+
+/** Applies the output encoder; one place so the search's crops and real outputs agree. */
+function encodeAs(
+  image: Sharp,
+  r: { format: ImageFormat; quality: number; effort: number; lossless: boolean },
+): Sharp {
+  switch (r.format) {
+    case "jpg":
+      // mozjpeg: progressive, trellis-optimised; deterministic for the same input.
+      return image.jpeg({ quality: r.quality, mozjpeg: true });
+    case "png":
+      return image.png({ compressionLevel: 9, effort: Math.max(1, Math.min(10, r.effort)) });
+    case "avif":
+      return image.avif({ quality: r.quality, effort: r.effort, lossless: r.lossless });
+    case "webp":
+      return image.webp({ quality: r.quality, effort: r.effort, lossless: r.lossless });
   }
 }
 
@@ -163,10 +183,12 @@ export const sharpImageEngine: ImageEngine = {
     const raw = sharp(image.data, {
       raw: { width: image.width, height: image.height, channels: image.channels },
     });
-    const encoded =
-      request.format === "avif"
-        ? raw.avif({ quality: request.quality, effort: request.effort })
-        : raw.webp({ quality: request.quality, effort: request.effort });
+    const encoded = encodeAs(raw, {
+      format: request.format,
+      quality: request.quality,
+      effort: request.effort,
+      lossless: false,
+    });
     const { data, info } = await encoded.toBuffer({ resolveWithObject: true });
     return {
       data,
@@ -185,18 +207,7 @@ export const sharpImageEngine: ImageEngine = {
     // A CMYK profile is meaningless on RGB output, so convert instead of keeping it.
     image = meta.space === "cmyk" ? image.toColourspace("srgb") : image.keepIccProfile();
 
-    image =
-      request.format === "avif"
-        ? image.avif({
-            quality: request.quality,
-            effort: request.effort,
-            lossless: request.lossless,
-          })
-        : image.webp({
-            quality: request.quality,
-            effort: request.effort,
-            lossless: request.lossless,
-          });
+    image = encodeAs(image, request);
 
     const { data, info } = await image.toBuffer({ resolveWithObject: true });
     return {

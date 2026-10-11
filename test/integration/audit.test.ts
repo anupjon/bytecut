@@ -92,16 +92,17 @@ describe("rule settings", () => {
     const report = await run(await project(), {
       settings: {
         "project/unreferenced": "off",
-        "image/no-responsive-set": "warn",
+        "image/no-modern-format": "error",
         "image/heavy": ["error", { maxBytes: 100_000 }],
       },
     });
     const ids = new Set(report.findings.map((f) => f.ruleId));
     expect(ids.has("project/unreferenced")).toBe(false);
 
-    const responsive = report.findings.filter((f) => f.ruleId === "image/no-responsive-set");
-    expect(responsive.length).toBeGreaterThan(0);
-    expect(responsive.every((f) => f.severity === "warn")).toBe(true);
+    // A changed severity applies to every finding of the rule.
+    const legacy = report.findings.filter((f) => f.ruleId === "image/no-modern-format");
+    expect(legacy.length).toBeGreaterThan(0);
+    expect(legacy.every((f) => f.severity === "error")).toBe(true);
 
     const heavy = report.findings.filter((f) => f.ruleId === "image/heavy");
     expect(heavy.map((f) => f.source).sort()).toEqual([

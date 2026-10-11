@@ -9,7 +9,15 @@ import { classify } from "../../src/core/classify/classify.js";
 import { sharpImageEngine as engine } from "../../src/core/engines/image.js";
 import { sha256 } from "../../src/core/hash.js";
 import { buildPlan } from "../../src/core/plan/build.js";
+import { buildCatalog } from "../../src/core/config/presets.js";
 import { getImagePreset } from "../../src/core/presets/index.js";
+
+// JPEG (the default) and the opt-in formats, so every encoder's estimate is held to ±25%.
+const catalog = buildCatalog({
+  photo: { formats: ["jpg", "avif", "webp"] },
+  hero: { formats: ["jpg", "avif", "webp"] },
+  icon: { formats: ["png", "avif", "webp"] },
+});
 
 let dir: string;
 beforeAll(async () => {
@@ -38,7 +46,7 @@ describe("size estimator (§M3: within ±25% of actual)", () => {
       outDir: join(dir, "out"),
       choosePreset: (source, a) => {
         const v = classify(source, a);
-        return { preset: getImagePreset(v.preset), reason: v.reason };
+        return { preset: getImagePreset(v.preset, catalog), reason: v.reason };
       },
       engine,
       readSource: (p) => readFile(p),

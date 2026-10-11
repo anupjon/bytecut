@@ -10,9 +10,9 @@ import type { EncodeRequest, ImageEngine } from "../../src/core/engines/types.js
 import { sha256 } from "../../src/core/hash.js";
 import { parseManifest } from "../../src/core/manifest/io.js";
 import { parsePlan, serializePlan } from "../../src/core/plan/schema.js";
-import { hashAll, listFiles, tempDir } from "../helpers.js";
+import { MODERN_POLICY, hashAll, listFiles, tempDir } from "../helpers.js";
 
-// small.jpg → 2 outputs (300w avif + webp), p3.jpg → 2 outputs (500w): cheap to encode.
+// With MODERN_POLICY: small.jpg → 2 outputs (300w avif + webp), p3.jpg → 2 (500w): cheap to encode.
 const FILES = ["small.jpg", "p3.jpg"];
 const OUT = "public/_bytecut";
 const MANIFEST = `${OUT}/bytecut-manifest.json`;
@@ -59,6 +59,8 @@ function run(
     outDir: OUT,
     execute: true,
     concurrency: 1,
+    // The expectations below are two outputs (AVIF and WebP) per image.
+    policy: MODERN_POLICY,
     ...extra,
   });
 }

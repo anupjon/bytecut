@@ -372,6 +372,44 @@ go/no-go gate and it passed.
   images, synced side-by-side players for video, and the sizes, CRF/quality, metric and score.
   `Ctrl-C` stops it (SIGINT exit 0 verified); the TUI stops its servers on quit.
 
+## Default format: JPEG (change after M9)
+
+- `photo` and `hero` write **one JPEG** (mozjpeg, q80 / q85) instead of AVIF + WebP. `webp` and `avif`
+  are opt-in: `presets.photo.formats: ["jpg", "webp", "avif"]` (any combination and order; the
+  snippet's `<picture>` lists AVIF, then WebP, and the JPEG is the `<img>`). A JPEG-only result is a
+  plain `<img>` (plus `srcset` only when a preset lists several widths).
+- **JPEG cannot hold transparency or be lossless**, so the planner substitutes a lossless **PNG** for
+  the `jpg` entry when the source really uses alpha (§6.9), when the preset is lossless, or when it is a
+  PNG the classifier rated low confidence (§6.8). `icon` writes PNG. WebP and AVIF carry alpha
+  themselves and are left alone.
+- A JPEG that is not smaller than its source is still "already optimal" and not written (§6.7); real
+  photos usually shrink, but an already-squeezed JPEG will not, and that is reported.
+- Config: `formats` accepts `jpg`, `png`, `webp`, `avif`; `quality: { jpg: N }` is new; `target` maps
+  to JPEG quality 65/80/90.
+- **Consequences**: the old `image/no-modern-format` rule keeps its id but its message is now "no
+  up-to-date optimized outputs"; `image/reencode-savings` still applies to WebP/AVIF sources. Existing
+  AVIF/WebP outputs from earlier runs become orphans and stale entries. Video posters are still AVIF.
+- Tests: the plan/audit goldens changed; suites that were about AVIF/WebP now opt in through
+  `MODERN_POLICY` (and exercise that path); `test/integration/jpeg-default.test.ts` covers the default
+  with real encodes, and 10 of 10 mutations of the new planner/engine/snippet logic are caught.
+
+## Default size: longest side up to 1920 (change after M9)
+
+- `photo` and `hero` now produce **one size per format**: the longest side is capped at 1920. A
+  landscape image is 1920 wide; a portrait image is 1920 tall with the width in proportion (rounded
+  down, so the height never exceeds the cap); an image within the cap keeps its size. Files are named by
+  their real width (`port-960.webp`). Previously: 640/1280/1920 (photo) and 640/1280/1920/2560 (hero).
+  `icon` is unchanged.
+- **Config**: `widths` still works (a list of widths); the new `maxEdge` sets the longest-side cap.
+  They are mutually exclusive, and each replaces the other when a preset extends one that has it.
+- **Consequences**: no `srcset` set by default (snippets emit a single-candidate `<picture>`), no
+  smaller variants for small screens, and `image/no-responsive-set` never fires unless a preset lists
+  several widths. Output counts and committed bytes drop to a third.
+- **Estimator**: trial-encodes at 640 px and extrapolates when the only planned output is wider, so an
+  audit does not encode every image at 1920 (found while updating the tests: it would have).
+- Tests updated for the new default (plan goldens, audit golden, optimize layout, rule-setting test) and
+  a real-encode test checks landscape 1920x960, portrait 960x1920 and an in-cap portrait untouched.
+
 ## Verification (2026-10-11, Linux, Node 23.8, ffmpeg 6.1.1)
 
 - Stage 3: `pnpm typecheck`, `pnpm lint` pass; `pnpm test` 83 files, 1080+ passed, 1 skipped (the

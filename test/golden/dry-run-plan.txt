@@ -1,30 +1,16 @@
 Plan: 3 images → public/_bytecut
 
 public/img/hero.jpg (19 B, 2400x1200, hero: name "hero" looks like a hero image)
-  img/hero/hero-640.avif  (avif, 640w, q65)
-  img/hero/hero-640.webp  (webp, 640w, q82)
-  img/hero/hero-1280.avif  (avif, 1280w, q65)
-  img/hero/hero-1280.webp  (webp, 1280w, q82)
-  img/hero/hero-1920.avif  (avif, 1920w, q65)
-  img/hero/hero-1920.webp  (webp, 1920w, q82)
-  img/hero/hero-2400.avif  (avif, 2400w, q65)
-  img/hero/hero-2400.webp  (webp, 2400w, q82)
+  img/hero/hero-1920.jpg  (jpg, 1920w, q85)
 
 public/img/logo.png (19 B, 300x300, icon: flat art (6 colours in sample, uses transparency, name "logo"))
-  img/logo/logo-64.avif  (avif, 64w, lossless)
-  img/logo/logo-64.webp  (webp, 64w, lossless)
-  img/logo/logo-128.avif  (avif, 128w, lossless)
-  img/logo/logo-128.webp  (webp, 128w, lossless)
-  img/logo/logo-256.avif  (avif, 256w, lossless)
-  img/logo/logo-256.webp  (webp, 256w, lossless)
-  img/logo/logo-300.avif  (avif, 300w, lossless)
-  img/logo/logo-300.webp  (webp, 300w, lossless)
+  img/logo/logo-64.png  (png, 64w, lossless)
+  img/logo/logo-128.png  (png, 128w, lossless)
+  img/logo/logo-256.png  (png, 256w, lossless)
+  img/logo/logo-300.png  (png, 300w, lossless)
 
 public/img/mid.jpg (18 B, 1000x700, photo: continuous-tone image)
-  img/mid/mid-640.avif  (avif, 640w, q60)
-  img/mid/mid-640.webp  (webp, 640w, q78)
-  img/mid/mid-1000.avif  (avif, 1000w, q60)
-  img/mid/mid-1000.webp  (webp, 1000w, q78)
+  img/mid/mid-1000.jpg  (jpg, 1000w, q80)
 
 public/img/spinner.webp (23 B, 64x64)
   skipped: animated image

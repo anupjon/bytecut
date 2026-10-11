@@ -38,8 +38,10 @@ describe("buildCatalog", () => {
     const { image, root, origin } = buildCatalog({
       thumbs: { extends: "photo", widths: [480, 240, 240], formats: ["webp"] },
     });
+    // Listing widths replaces the longest-side cap rather than adding to it.
     expect(image.thumbs).toEqual({
       ...PHOTO_PRESET,
+      maxEdge: undefined,
       name: "thumbs",
       widths: [240, 480],
       formats: ["webp"],

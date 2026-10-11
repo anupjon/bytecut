@@ -37,7 +37,9 @@ const rejected = (what: string, why: string = M9) =>
       if (value !== undefined) ctx.addIssue({ code: "custom", message: `${what} ${why}` });
     });
 
-const qualityByFormat = z.object({ avif: quality.optional(), webp: quality.optional() }).strict();
+const qualityByFormat = z
+  .object({ jpg: quality.optional(), avif: quality.optional(), webp: quality.optional() })
+  .strict();
 const effortByFormat = z
   .object({
     avif: z.number().int().min(0).max(9).optional(),
@@ -61,8 +63,9 @@ export const presetSchema = z
     target: z.enum(TARGETS).optional(),
     // images
     widths: z.array(z.number().int().min(16).max(16384)).min(1).optional(),
+    maxEdge: z.number().int().min(16).max(16384).optional(),
     formats: z
-      .array(z.enum(["avif", "webp"]))
+      .array(z.enum(["jpg", "png", "webp", "avif"]))
       .min(1)
       .optional(),
     quality: qualityByFormat.optional(),
@@ -90,6 +93,12 @@ export const presetSchema = z
   .superRefine((preset, ctx) => {
     const say = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
+    if (preset.maxEdge !== undefined && preset.widths !== undefined) {
+      say(
+        "maxEdge",
+        "cannot be combined with `widths`: one caps the longest side, the other lists widths",
+      );
+    }
     if (preset.vmaf !== undefined && preset.ssimulacra2 !== undefined) {
       say("vmaf", "cannot be combined with `ssimulacra2`: a preset searches for one metric");
     }

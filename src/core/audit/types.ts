@@ -32,7 +32,7 @@ export interface ProjectContext {
   plan: Plan;
   manifest: Manifest | null;
   /** Encoder strings the current engine would record, per format. */
-  encoders: Record<ImageFormat, string>;
+  encoders: Partial<Record<ImageFormat, string>>;
   /**
    * Encoder labels the installed ffmpeg would record per video codec, e.g.
    * `libsvtav1 (ffmpeg 6.1.1)`. Absent when there is no ffmpeg or no video work.

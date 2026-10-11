@@ -3,7 +3,7 @@ import type { ImageAnalysis, ImageEngine } from "../engines/types.js";
 import { BytecutError } from "../errors.js";
 import { sha256 } from "../hash.js";
 import { toPosix } from "../posix.js";
-import type { ImagePreset } from "../presets/photo.js";
+import type { ImageFormat, ImagePreset } from "../presets/photo.js";
 import type { Plan, PlanItem, PlannedOutput } from "./types.js";
 
 /**
@@ -15,6 +15,40 @@ export function targetWidths(presetWidths: number[], sourceWidth: number): numbe
   const largest = Math.max(...presetWidths);
   if (sourceWidth < largest && !widths.includes(sourceWidth)) widths.push(sourceWidth);
   return [...new Set(widths)].sort((a, b) => a - b);
+}
+
+/**
+ * The output widths for a source under a preset. With `maxEdge` (the default) that is one
+ * width: the longest side is capped, so a landscape image is `maxEdge` wide and a portrait
+ * one is `maxEdge` tall with its width in proportion (rounded down, so the height never
+ * exceeds the cap). An image already within the cap keeps its native size (§6.7).
+ */
+export function outputWidths(
+  preset: Pick<ImagePreset, "widths" | "maxEdge">,
+  sourceWidth: number,
+  sourceHeight: number,
+): number[] {
+  if (preset.maxEdge === undefined) return targetWidths(preset.widths, sourceWidth);
+  const longest = Math.max(sourceWidth, sourceHeight);
+  if (longest <= preset.maxEdge) return [sourceWidth];
+  return [Math.max(1, Math.floor((sourceWidth * preset.maxEdge) / longest))];
+}
+
+/**
+ * The formats to write for one source. `jpg` cannot hold transparency or be lossless, so where
+ * the preset asks for it and the source needs either, that entry becomes `png` instead (§6.9
+ * keeps alpha; §6.8 keeps ambiguous PNGs lossless). The other formats handle both natively.
+ */
+export function formatsFor(
+  preset: Pick<ImagePreset, "formats" | "lossless">,
+  analysis: Pick<ImageAnalysis, "format" | "alphaUsed">,
+  confidence: "high" | "medium" | "low" | undefined,
+): ImageFormat[] {
+  // A PNG whose content the classifier could not tell apart is not turned into a lossy JPEG.
+  const ambiguousPng = analysis.format === "png" && confidence === "low";
+  const needsPng = analysis.alphaUsed || preset.lossless === true || ambiguousPng;
+  const out = preset.formats.map((f) => (f === "jpg" && needsPng ? "png" : f));
+  return [...new Set(out)];
 }
 
 /**
@@ -125,11 +159,13 @@ export async function buildPlan(options: BuildPlanOptions): Promise<Plan> {
     const dir = mirroredDir(source, staticRoot);
     const name = posix.basename(source, posix.extname(source));
     const outputs: PlannedOutput[] = [];
-    for (const width of targetWidths(preset.widths, analysis.width)) {
-      for (const format of preset.formats) {
+    for (const width of outputWidths(preset, analysis.width, analysis.height)) {
+      for (const format of formatsFor(preset, analysis, choice.confidence)) {
         // Conservative (§6.8): without a flat-art verdict a PNG's WebP stays lossless; AVIF
         // lossless is slow and rarely wins, so it stays lossy unless the preset demands it.
-        const lossless = preset.lossless ?? (analysis.format === "png" && format === "webp");
+        // PNG output is lossless by nature.
+        const lossless =
+          format === "png" || (preset.lossless ?? (analysis.format === "png" && format === "webp"));
         const path = posix.join(dir, name, `${name}-${width}.${format}`);
         const owner = claimed.get(path);
         if (owner !== undefined) {

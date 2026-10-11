@@ -8,7 +8,7 @@ const outputSchema = z
   .object({
     path: z.string().min(1),
     url: z.string(),
-    format: z.enum(["avif", "webp"]),
+    format: z.enum(["jpg", "png", "webp", "avif"]),
     width: z.number().int().nonnegative(),
     height: z.number().int().nonnegative(),
     bytes: z.number().int().nonnegative(),

@@ -77,7 +77,8 @@ export interface ImageEngine {
   /** Lossy-encodes raw pixels (a crop) for the quality search. */
   encodeRaw?(image: RawImage, request: SearchEncodeRequest): Promise<EncodeResult>;
   /** What `encode` would report for each format, so drift can be detected without encoding. */
-  encoders(): Record<ImageFormat, string>;
+  /** Encoder name and version per output format; a fake may list only the formats it uses. */
+  encoders(): Partial<Record<ImageFormat, string>>;
   /** Informational tool versions for the manifest. */
   versions(): Record<string, string>;
 }

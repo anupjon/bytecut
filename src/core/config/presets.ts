@@ -9,15 +9,16 @@ import { hint, type PresetConfig } from "./schema.js";
  * search that picks quality per image is M9. `balanced` is the photo preset's own setting.
  */
 export const IMAGE_TARGETS = {
-  low: { avif: 45, webp: 65 },
-  balanced: { avif: 60, webp: 78 },
-  high: { avif: 75, webp: 88 },
+  low: { jpg: 65, avif: 45, webp: 65 },
+  balanced: { jpg: 80, avif: 60, webp: 78 },
+  high: { jpg: 90, avif: 75, webp: 88 },
 } as const;
 /** CRF offsets for video: higher CRF is smaller and worse. */
 export const VIDEO_TARGET_CRF_OFFSET = { low: 4, balanced: 0, high: -4 } as const;
 
 const IMAGE_ONLY = [
   "widths",
+  "maxEdge",
   "formats",
   "quality",
   "effort",
@@ -48,15 +49,29 @@ function applyImage(name: string, base: ImagePreset, def: PresetConfig): ImagePr
     name,
     widths: [...base.widths],
     formats: [...base.formats],
-    encoders: { avif: { ...base.encoders.avif }, webp: { ...base.encoders.webp } },
+    encoders: {
+      jpg: { ...base.encoders.jpg },
+      png: { ...base.encoders.png },
+      avif: { ...base.encoders.avif },
+      webp: { ...base.encoders.webp },
+    },
   };
   if (def.target === "lossless") next.lossless = true;
   else if (def.target) {
+    next.encoders.jpg.quality = IMAGE_TARGETS[def.target].jpg;
     next.encoders.avif.quality = IMAGE_TARGETS[def.target].avif;
     next.encoders.webp.quality = IMAGE_TARGETS[def.target].webp;
   }
-  if (def.widths) next.widths = [...new Set(def.widths)].sort((a, b) => a - b);
+  if (def.widths) {
+    next.widths = [...new Set(def.widths)].sort((a, b) => a - b);
+    delete next.maxEdge;
+  }
+  if (def.maxEdge !== undefined) {
+    next.maxEdge = def.maxEdge;
+    next.widths = [];
+  }
   if (def.formats) next.formats = [...new Set(def.formats)];
+  if (def.quality?.jpg !== undefined) next.encoders.jpg.quality = def.quality.jpg;
   if (def.quality?.avif !== undefined) next.encoders.avif.quality = def.quality.avif;
   if (def.quality?.webp !== undefined) next.encoders.webp.quality = def.quality.webp;
   if (def.effort?.avif !== undefined) next.encoders.avif.effort = def.effort.avif;

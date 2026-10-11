@@ -86,7 +86,7 @@ export function imageElement(
 ): { el: El; hints: string[] } {
   const hints: string[] = [];
   const written = entry.outputs.filter((o) => o.status === "written");
-  const ofFormat = (f: "avif" | "webp"): ManifestOutput[] =>
+  const ofFormat = (f: ManifestOutput["format"]): ManifestOutput[] =>
     written.filter((o) => o.format === f).sort(byWidth);
 
   const sources: El[] = [];
@@ -106,13 +106,16 @@ export function imageElement(
     });
   }
 
-  const webp = ofFormat("webp");
-  const fallback = webp[webp.length - 1];
+  // The <img> is the universally supported file: JPEG (or PNG for transparency), else the
+  // largest WebP, else the original.
+  const compatible = ofFormat("jpg").length > 0 ? ofFormat("jpg") : ofFormat("png");
+  const fallbackSet = compatible.length > 0 ? compatible : ofFormat("webp");
+  const fallback = fallbackSet[fallbackSet.length - 1];
   if (!fallback) {
     hints.push(
       sources.length === 0
         ? "No optimized outputs were written (they were not smaller than the source), so this uses the original file."
-        : "No WebP output exists, so the <img> falls back to the original file.",
+        : "No JPEG, PNG or WebP output exists, so the <img> falls back to the original file.",
     );
   }
 
@@ -124,6 +127,16 @@ export function imageElement(
 
   const img: Attr[] = [
     { name: "src", value: src },
+    // Several JPEG/PNG widths and no <picture> to carry them: the <img> carries the set.
+    ...(compatible.length > 1
+      ? [
+          {
+            name: "srcset",
+            value: compatible.map((o) => `${encodeUrl(o.url)} ${o.width}w`).join(", "),
+          },
+          { name: "sizes", value: options.sizes ?? "100vw" },
+        ]
+      : []),
     { name: "width", value: String(width) },
     { name: "height", value: String(height) },
     { name: "alt", value: options.alt ?? "" },

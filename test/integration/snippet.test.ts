@@ -50,6 +50,17 @@ async function project(deps: Record<string, string>, opts: { publicDir?: boolean
   await mkdir(join(root, dir, "img"), { recursive: true });
   await cp(join(fixtures, "small.jpg"), join(root, dir, "img/small.jpg"));
   await writeFile(join(root, dir, "img/hero.jpg"), heroJpeg);
+  // AVIF and WebP are opt-in; these tests are about the <picture> they produce. The JPEG-only
+  // default has its own snippet tests in jpeg-default.test.ts.
+  await writeFile(
+    join(root, "bytecut.config.json"),
+    JSON.stringify({
+      presets: {
+        photo: { formats: ["avif", "webp"] },
+        hero: { formats: ["avif", "webp"] },
+      },
+    }),
+  );
   return root;
 }
 

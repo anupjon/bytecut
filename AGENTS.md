@@ -112,8 +112,8 @@ test/
 ```
 Defaults: `outDir = public/_bytecut`, `publicPath = /_bytecut`, adjusted by detected framework.
 The mirrored dir is relative to the **static root** (`public` for Next/Astro/Vite and for static sites
-that have one), so `public/img/hero.jpg` → `<outDir>/img/hero/hero-640.avif`, served at
-`/_bytecut/img/hero/hero-640.avif`. Sources outside the static root mirror from the project root.
+that have one), so `public/img/hero.jpg` → `<outDir>/img/hero/hero-1920.jpg`, served at
+`/_bytecut/img/hero/hero-1920.jpg`. Sources outside the static root mirror from the project root.
 A static site with no `public/` uses `outDir = _bytecut` and static root `.`.
 
 Videos (and animated GIFs) mirror the same way, one folder per source:
@@ -134,7 +134,7 @@ As implemented (`src/core/config/`): the file is `bytecut.config.{ts,mts,js,mjs,
 project root (or `--config`); the schema is strict, so unknown keys are errors. `assets` maps globs
 to preset names (first match wins; a pattern without `/` matches the name at any depth). `presets`
 entries say what they `extends` (a built-in name without `extends` changes that built-in) and may set
-`target`, `widths`, `formats`, `quality`, `effort`, `lossless`, `priority` (images) or `audio`,
+`target`, `widths` or `maxEdge` (the longest side; not both), `formats`, `quality`, `effort`, `lossless`, `priority` (images) or `audio`,
 `maxWidth`, `maxFps`, `codecs`, `crf` (video). `budgets` takes `maxFileSize` / `maxTotalSize` as bytes
 or `"250 KB"`. `raw` is rejected. On image presets `ssimulacra2` (lowest acceptable score), `maxSize` (cap per
 output) and `floor` (lowest score while fitting the cap; required with `maxSize`) turn on a perceptual
@@ -143,6 +143,9 @@ clips; `ssimulacra2Path` is an optional native scorer.
 
 ### Presets
 Built-ins: `photo`, `hero`, `icon`, `svg`, `background-video`, `content-video`, `gif-to-video`.
+Image presets write one JPEG per image by default (longest side up to 1920); `webp` and `avif` are
+opt-in through `formats`, and a source with real transparency (or a lossless/icon preset, or a PNG the
+classifier could not place) gets a lossless PNG in place of the JPEG.
 Quality is intent (`target: "low" | "balanced" | "high" | "lossless"`), optionally with a perceptual
 threshold (`ssimulacra2`, `vmaf`) or a `raw` encoder escape hatch. Precedence (low → high):
 built-in → `extends` chain → `assets` match → per-file override (TUI/flags).
@@ -473,3 +476,9 @@ Keep this list accurate as scripts change.
 - 2026-10-11 — The same scorer selection serves images and video (confirmed with you) — one flag, one lazy start, native when present and WASM otherwise.
 - 2026-10-11 — `/compare` is a loopback-only read-only server with an unguessable path token, index-addressed files and a Host check, serving one self-contained page (confirmed with you: images and video) — it cannot be reached from another machine or a web page, and a request can never name a path.
 - 2026-10-11 — The scorer package is the unscoped `bytecut-ssimulacra2`, not `@bytecut/ssimulacra2` (confirmed with you) — the `@bytecut` npm scope is owned by someone else, and an unscoped name needs no organisation.
+- 2026-10-11 — `photo` and `hero` make one output per format with the longest side capped at 1920 (a landscape image 1920 wide, a portrait one 1920 tall with the width in proportion, rounded down; confirmed with you) — supersedes the 640/1280/1920 set; files are named by their real width, an image already within the cap keeps its size, and `widths` remains for anyone who wants a set.
+- 2026-10-11 — Added the preset field `maxEdge` (longest side) beside `widths`, mutually exclusive — without it a configured size could only be a width, which is the wrong cap for portrait images.
+- 2026-10-11 — The size estimator trial-encodes at 640 px even when the only planned output is wider, and extrapolates — otherwise the single 1920 default would make an audit encode every image at full size.
+- 2026-10-11 — The default image output is a single JPEG (mozjpeg); WebP and AVIF are opt-in via `formats` (confirmed with you) — supersedes the AVIF + WebP default of M1, and the JPEG is the file every browser and tool can open. Video posters stay AVIF.
+- 2026-10-11 — Where the preset asks for `jpg` but the source has real transparency, or the preset is lossless, or a PNG's content is ambiguous, the output is a lossless PNG instead (confirmed with you) — keeps §6.9 (alpha) and §6.8 (ambiguous PNGs stay lossless); `icon` writes PNG.
+- 2026-10-11 — `ImageFormat` is now `jpg | png | webp | avif`, and manifests and plans accept all four — additive: an older manifest of avif/webp still reads.

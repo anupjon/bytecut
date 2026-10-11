@@ -23,7 +23,7 @@ export const noModernFormat: AuditRule = {
         ruleId: ID,
         severity: "warn",
         source: image.source,
-        message: `${format.toUpperCase()} source has no up-to-date AVIF/WebP outputs`,
+        message: `${format.toUpperCase()} source has no up-to-date optimized outputs`,
         current: image.bytes,
         estimated: image.estimate!.best.bytes,
         savingsBytes: saving,

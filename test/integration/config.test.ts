@@ -128,8 +128,9 @@ describe("config drives the plan", () => {
     const root = await project({ "bytecut.config.json": JSON.stringify({ framework: "next" }) });
     await cli(root, ["optimize", "-y"]);
     const { stdout } = await cli(root, ["snippet", "public/img/small.jpg"]);
-    expect(stdout).toMatch(/className|fetchPriority|srcSet|<img[^>]*\/>/);
-    expect(stdout).toContain("srcSet=");
+    // JSX, not HTML: the default is a single JPEG, so a self-closing <img> and a style object.
+    expect(stdout).toMatch(/<img[^>]*\/>/);
+    expect(stdout).toContain("style={{");
   });
 
   it("excludes files from directory scans with .gitignore syntax", async () => {
@@ -200,7 +201,8 @@ describe("bytecut explain", () => {
     expect(stdout).toMatch(/preset:\s+crisp\s+\(from assets rule "public\/img\/small\.jpg"\)/);
     expect(stdout).toMatch(/extends:\s+photo → crisp/);
     expect(stdout).toMatch(/changed:\s+target/);
-    expect(stdout).toMatch(/avif:\s+quality 75/);
+    expect(stdout).toMatch(/formats:\s+jpg/);
+    expect(stdout).toMatch(/jpg:\s+quality 90/);
   });
 
   it("falls back to the classifier and says so, and notes audit.ignore", async () => {

@@ -3,7 +3,9 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
+import { buildCatalog } from "../src/core/config/presets.js";
 import type { ImageAnalysis } from "../src/core/engines/types.js";
+import type { PresetPolicy } from "../src/core/presets/catalog.js";
 
 const dirs: string[] = [];
 
@@ -84,3 +86,17 @@ export function vectorPixels(seed: number, w: number, h: number): Uint8ClampedAr
   }
   return px;
 }
+
+/**
+ * The built-in presets with AVIF and WebP added, the output set every test written before
+ * JPEG became the default expects. Using it also exercises the opt-in path.
+ */
+export const MODERN_FORMATS = ["avif", "webp"] as const;
+export const MODERN_POLICY: PresetPolicy = {
+  catalog: buildCatalog({
+    photo: { formats: [...MODERN_FORMATS] },
+    hero: { formats: [...MODERN_FORMATS] },
+    icon: { formats: [...MODERN_FORMATS] },
+  }),
+  assetFor: () => undefined,
+};

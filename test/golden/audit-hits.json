@@ -70,16 +70,6 @@
     "source": "public/img/with-meta.jpg"
   },
   {
-    "ruleId": "image/no-responsive-set",
-    "severity": "info",
-    "source": "public/img/hero.jpg"
-  },
-  {
-    "ruleId": "image/no-responsive-set",
-    "severity": "info",
-    "source": "public/img/photo-big.jpg"
-  },
-  {
     "ruleId": "image/oversized-dimensions",
     "severity": "warn",
     "source": "public/img/photo-big.jpg"

@@ -64,12 +64,20 @@ export async function estimateItem(
   for (const format of formats) {
     const outs = item.outputs.filter((o) => o.format === format).sort((a, b) => a.width - b.width);
     const largest = outs[outs.length - 1]!;
-    // Prefer the biggest planned width within the trial limit; if even the smallest planned
-    // output is wider than that, trial at the smallest (the only way to stay cheap).
+    // Prefer the biggest planned width within the trial limit. When every planned output is
+    // wider than that (the default is one size, 1920), trial at the limit instead: encoding
+    // the full size just to estimate it would make an audit as slow as the optimization.
     const within = outs.filter((o) => o.width <= TRIAL_MAX_WIDTH);
-    const trial = within.length > 0 ? within[within.length - 1]! : outs[0]!;
+    const trial =
+      within.length > 0 ? within[within.length - 1]! : { ...outs[0]!, width: TRIAL_MAX_WIDTH };
 
-    const key = estimateKey(item.sourceSha256, item.preset, trial, trial.width, encoders[format]);
+    const key = estimateKey(
+      item.sourceSha256,
+      item.preset,
+      trial,
+      trial.width,
+      encoders[format] ?? format,
+    );
     let bytes = deps.cache.getEstimate(key)?.bytes;
     if (bytes === undefined) {
       const encoded = await deps.engine.encode(await readData(), trial);

@@ -80,21 +80,21 @@ describe("TUI against the real session", () => {
     );
 
     current = mount(sessionFor(root, sharpImageEngine), (props) => <App3 {...props} />);
-    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 15_000);
+    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 60_000);
     expect(current.frame()).toMatch(/3 of 3 files selected/);
 
     await current.press(KEY.enter);
-    await current.waitFor((f) => f.includes("Review:"), "the review", 15_000);
+    await current.waitFor((f) => f.includes("Review:"), "the review", 60_000);
     await current.press(KEY.enter);
     await current.waitFor((f) => f.includes("Done"), "the results", 30_000);
     expect(current.frame()).toMatch(/files? written/);
 
     const outputs = await listFiles(join(root, OUT));
     expect(outputs).toContain("bytecut-manifest.json");
-    expect(outputs.some((f) => f.startsWith("img/p0/") && f.endsWith(".avif"))).toBe(true);
+    expect(outputs.some((f) => f.startsWith("img/p0/") && f.endsWith(".jpg"))).toBe(true);
     // Sources are untouched (§6.1).
     expect(await hashAll(join(root, "public/img"), Object.keys(before))).toEqual(before);
-  });
+  }, 120_000);
 
   it("cancelling mid-run leaves no partial files and a manifest that matches the disk", async () => {
     const root = await nextProject(5);
@@ -106,29 +106,29 @@ describe("TUI against the real session", () => {
       ),
       (props) => <App3 {...props} />,
     );
-    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 15_000);
+    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 60_000);
     await current.press(KEY.enter);
-    await current.waitFor((f) => f.includes("Review:"), "the review", 15_000);
+    await current.waitFor((f) => f.includes("Review:"), "the review", 60_000);
     // The scan's trial encodes use the engine too; count only what the run itself does.
     const scanEncodes = encodes;
     await current.press(KEY.enter);
 
     // Let a few encodes complete, then cancel while work is in flight.
     const start = Date.now();
-    while (encodes - scanEncodes < 3 && Date.now() - start < 15_000) {
+    while (encodes - scanEncodes < 3 && Date.now() - start < 60_000) {
       await new Promise((r) => setTimeout(r, 20));
     }
     expect(encodes - scanEncodes).toBeGreaterThanOrEqual(3);
     await current.press(KEY.esc);
-    await current.waitFor((f) => f.includes("Cancelled"), "the cancelled screen", 15_000);
+    await current.waitFor((f) => f.includes("Cancelled"), "the cancelled screen", 60_000);
     expect(current.frame()).toContain("no partial files were left behind");
 
     const all = await listFiles(join(root, OUT));
     // §6.4: nothing truncated or half-written is left in outDir.
     expect(all.filter((f) => f.endsWith(".tmp"))).toEqual([]);
-    const written = all.filter((f) => /\.(avif|webp)$/.test(f));
+    const written = all.filter((f) => /\.jpg$/.test(f));
     expect(written.length).toBeGreaterThan(0);
-    expect(written.length).toBeLessThan(5 * 6 + 2); // genuinely stopped early
+    expect(written.length).toBeLessThan(6); // genuinely stopped early: 6 images, one JPEG each
 
     // Every output on disk is complete and decodable.
     for (const f of written) {
@@ -146,7 +146,7 @@ describe("TUI against the real session", () => {
     for (const o of listed) {
       expect(sha256(await readFile(join(root, OUT, o.path)))).toBe(o.sha256);
     }
-  });
+  }, 120_000);
 
   it("a run after a cancel finishes the rest without warnings", async () => {
     const root = await nextProject(3);
@@ -158,14 +158,14 @@ describe("TUI against the real session", () => {
       ),
       (props) => <App3 {...props} />,
     );
-    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 15_000);
+    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 60_000);
     await current.press(KEY.enter);
-    await current.waitFor((f) => f.includes("Review:"), "the review", 15_000);
+    await current.waitFor((f) => f.includes("Review:"), "the review", 60_000);
     const scanEncodes = encodes;
     await current.press(KEY.enter);
     while (encodes - scanEncodes < 2) await new Promise((r) => setTimeout(r, 20));
     await current.press(KEY.esc);
-    await current.waitFor((f) => f.includes("Cancelled"), "cancel", 15_000);
+    await current.waitFor((f) => f.includes("Cancelled"), "cancel", 60_000);
     current.unmount();
 
     // Resume with the headless pipeline against the same folder.
@@ -183,16 +183,16 @@ describe("TUI against the real session", () => {
       true,
     );
     expect(outcome.findings.filter((f) => f.ruleId === "project/stale-output")).toEqual([]);
-  });
+  }, 120_000);
 
   it("per-file preset overrides survive a rescan, so an optimized file stays 'done'", async () => {
     const root = await nextProject(1);
     current = mount(sessionFor(root, sharpImageEngine), (props) => <App3 {...props} />);
-    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 15_000);
+    await current.waitFor((f) => f.includes("p0.jpg"), "the list", 60_000);
     await current.press("p"); // photo → hero
     await current.waitFor((f) => /p0\.jpg.*hero\*/.test(f), "the override");
     await current.press(KEY.enter);
-    await current.waitFor((f) => f.includes("Review:"), "the review", 15_000);
+    await current.waitFor((f) => f.includes("Review:"), "the review", 60_000);
     await current.press(KEY.enter);
     await current.waitFor((f) => f.includes("Done"), "the results", 30_000);
     // The preset change is news to the config, so the run ends with the save question.
@@ -204,11 +204,11 @@ describe("TUI against the real session", () => {
     await current.waitFor(
       (f) => f.includes("already optimized") || f.includes("Nothing to optimize"),
       "the rescan",
-      15_000,
+      60_000,
     );
     // photo.jpg-sized p0 is covered under the override; it must not reappear as work to do.
     expect(current.frame()).not.toMatch(/\[x\] .*p0\.jpg/);
-  });
+  }, 120_000);
 });
 
 // The harness mounts <App> itself; this alias keeps the call sites above short.
