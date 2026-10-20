@@ -55,8 +55,15 @@ Useful flags: `--dry-run --json` prints the plan as JSON and `--plan <file>` exe
 one; `--out-dir`, `--preset`, `--force`, `--placeholder dominant-color|lqip|blurhash|none`.
 
 In the interactive session: `space` toggles a file, `enter` reviews and runs, `p` changes the
-preset, `o` the output folder, `d` details, `esc` cancels, `?` help. Type `/` for commands
-(`/snippet @file`, `/compare @file`, `/save`) and `@` to mention a file.
+preset, `i` the image output, `o` the output folder, `d` details, `esc` cancels, `?` help. Type `/`
+for commands (`/images`, `/snippet @file`, `/compare @file`, `/save`) and `@` to mention a file.
+
+Once the scan has found images, the session asks how to write them: **formats** (JPEG, WebP, AVIF;
+JPEG by default), **max edge** (1280, 1920 by default, 2560, 3840 or a custom number of pixels) and
+**max size per file** (no cap by default, 150 KB, 300 KB, 500 KB, 1 MB or custom). The answers apply
+to `photo` and `hero` (icons stay lossless PNG). A size cap turns on the quality search below with
+`ssimulacra2: 80` and `floor: 65`. `/save` keeps the answers in the config as `presets.photo` and
+`presets.hero`.
 
 ## Configuration
 

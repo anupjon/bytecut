@@ -13,6 +13,11 @@ export interface Choices {
   placeholder?: PlaceholderKind | "none" | undefined;
   /** Source path (POSIX, project-relative) → preset name. */
   presets?: Record<string, string> | undefined;
+  /**
+   * Preset name → its whole definition as it should now read (the image output choices).
+   * Each replaces the config's entry of that name.
+   */
+  presetSettings?: Record<string, Record<string, unknown>> | undefined;
 }
 
 export function isEmpty(choices: Choices): boolean {
@@ -20,7 +25,8 @@ export function isEmpty(choices: Choices): boolean {
     choices.outDir === undefined &&
     choices.publicPath === undefined &&
     choices.placeholder === undefined &&
-    Object.keys(choices.presets ?? {}).length === 0
+    Object.keys(choices.presets ?? {}).length === 0 &&
+    Object.keys(choices.presetSettings ?? {}).length === 0
   );
 }
 
@@ -42,6 +48,10 @@ export function applyChoices(existing: unknown, choices: Choices): Raw {
       ...(isObject(next.manifest) ? next.manifest : {}),
       placeholder: choices.placeholder,
     };
+  }
+  const settings = choices.presetSettings ?? {};
+  if (Object.keys(settings).length > 0) {
+    next.presets = { ...(isObject(next.presets) ? next.presets : {}), ...settings };
   }
   const presets = choices.presets ?? {};
   if (Object.keys(presets).length > 0) {

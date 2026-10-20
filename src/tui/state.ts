@@ -3,11 +3,19 @@ import type { AuditPhase } from "../core/commands/audit.js";
 import type { OutputResult, RunResult, VideoOutputResult } from "../core/execute/run.js";
 import type { Plan } from "../core/plan/types.js";
 import type { Choices } from "../core/config/choices.js";
+import {
+  IMAGE_FORMAT_CHOICES,
+  IMAGE_OPTION_DEFAULTS,
+  MAX_EDGE_CHOICES,
+  MAX_SIZE_CHOICES,
+  sameImageOptions,
+  type ImageOptions,
+} from "../core/config/image-options.js";
 import { defaultSelection, type Model, type Row } from "./model.js";
 
 export type View = "scanning" | "list" | "review" | "running" | "done" | "error";
 export type Overlay =
-  null | "help" | "details" | "outdir" | "command" | "doctor" | "snippet" | "save";
+  null | "help" | "details" | "outdir" | "command" | "doctor" | "snippet" | "save" | "image-setup";
 
 export const PRESET_CYCLE = ["photo", "hero", "icon"] as const;
 export const VIDEO_PRESET_CYCLE = ["background-video", "content-video", "gif-to-video"] as const;
@@ -61,6 +69,25 @@ export interface SaveView {
   outcome: SaveOutcome | null;
 }
 
+/** The "Image output" panel: three questions, each a row of choices. */
+export interface ImageSetup {
+  /** 0 formats, 1 max edge, 2 max size. */
+  question: 0 | 1 | 2;
+  /** Highlighted format on the first row. */
+  formatCursor: number;
+  formats: ImageOptions["formats"];
+  /** Index into MAX_EDGE_CHOICES; its length means "Custom". */
+  edge: number;
+  /** Index into MAX_SIZE_CHOICES; its length means "Custom". */
+  size: number;
+  customEdge: number | null;
+  customSize: number | null;
+  /** Which custom value is being typed, if any (its text is `State.input`). */
+  typing: "maxEdge" | "maxSize" | null;
+}
+
+export const SETUP_QUESTIONS = 3;
+
 export interface State {
   view: View;
   /** Names `p` cycles through and `/preset` accepts: the config's image presets. */
@@ -68,7 +95,15 @@ export interface State {
   /** The same for video rows: the config's video presets. */
   videoPresetNames: string[];
   /** What the config already says, so only new choices are offered for saving. */
-  baseline: { presets: Record<string, string>; outDir: string };
+  baseline: { presets: Record<string, string>; outDir: string; imageOptions: ImageOptions };
+  /** Formats, max edge and max size the lossy image presets use in this session. */
+  imageOptions: ImageOptions;
+  /** The preset definitions that would make `imageOptions` permanent. */
+  imagePresetSettings: Record<string, Record<string, unknown>>;
+  imageSetup: ImageSetup | null;
+  /** Whether the panel opens by itself after the first scan with images. */
+  askImageOptions: boolean;
+  imageSetupShown: boolean;
   save: SaveView | null;
   /** The snippet overlay's content. */
   snippet: SnippetView | null;
@@ -109,12 +144,19 @@ export function initialState(
   outDir: string,
   presetNames: readonly string[] = PRESET_CYCLE,
   videoPresetNames: readonly string[] = VIDEO_PRESET_CYCLE,
+  image: { options?: ImageOptions; ask?: boolean } = {},
 ): State {
+  const imageOptions = image.options ?? IMAGE_OPTION_DEFAULTS;
   return {
     view: "scanning",
     presetNames: [...presetNames],
     videoPresetNames: [...videoPresetNames],
-    baseline: { presets: {}, outDir },
+    baseline: { presets: {}, outDir, imageOptions },
+    imageOptions,
+    imagePresetSettings: {},
+    imageSetup: null,
+    askImageOptions: image.ask ?? false,
+    imageSetupShown: false,
     save: null,
     snippet: null,
     doneCursor: 0,
@@ -145,14 +187,62 @@ export function unsavedChoices(state: State): Choices {
       ([source, preset]) => state.baseline.presets[source] !== preset,
     ),
   );
+  const imageChanged =
+    !sameImageOptions(state.imageOptions, state.baseline.imageOptions) &&
+    Object.keys(state.imagePresetSettings).length > 0;
   return {
     ...(state.outDir !== state.baseline.outDir ? { outDir: state.outDir } : {}),
     ...(Object.keys(presets).length > 0 ? { presets } : {}),
+    ...(imageChanged ? { presetSettings: state.imagePresetSettings } : {}),
   };
 }
 
+/** The panel's questions, opened on what the session uses now. */
+export function openImageSetup(options: ImageOptions): ImageSetup {
+  const edge = (MAX_EDGE_CHOICES as readonly number[]).indexOf(options.maxEdge);
+  const size = (MAX_SIZE_CHOICES as readonly (number | null)[]).indexOf(options.maxSize);
+  return {
+    question: 0,
+    formatCursor: 0,
+    formats: [...options.formats],
+    edge: edge === -1 ? MAX_EDGE_CHOICES.length : edge,
+    size: size === -1 ? MAX_SIZE_CHOICES.length : size,
+    customEdge: edge === -1 ? options.maxEdge : null,
+    customSize: size === -1 ? options.maxSize : null,
+    typing: null,
+  };
+}
+
+/**
+ * The options the panel describes, or which custom value still has to be typed: "Custom" is
+ * highlighted but nothing was entered for it yet.
+ */
+export function setupOptions(setup: ImageSetup): ImageOptions | "maxEdge" | "maxSize" {
+  const maxEdge = MAX_EDGE_CHOICES[setup.edge] ?? setup.customEdge;
+  if (maxEdge == null) return "maxEdge";
+  const maxSize =
+    setup.size < MAX_SIZE_CHOICES.length ? MAX_SIZE_CHOICES[setup.size]! : setup.customSize;
+  if (maxSize === null && setup.size >= MAX_SIZE_CHOICES.length) return "maxSize";
+  return {
+    formats: IMAGE_FORMAT_CHOICES.filter((f) => setup.formats.includes(f)),
+    maxEdge,
+    maxSize,
+  };
+}
+
+export const hasImageRows = (model: Model) => model.rows.some((r) => r.kind === "image");
+
 export type Action =
   | { type: "save-open"; choices: Choices }
+  | { type: "image-setup-open" }
+  | { type: "image-setup-key"; key: "up" | "down" | "left" | "right" | "toggle" }
+  | { type: "image-setup-typing"; field: "maxEdge" | "maxSize" | null }
+  | { type: "image-setup-custom"; field: "maxEdge" | "maxSize"; value: number }
+  | {
+      type: "image-setup-applied";
+      options: ImageOptions;
+      settings: Record<string, Record<string, unknown>>;
+    }
   | { type: "save-result"; outcome: SaveOutcome }
   | {
       type: "scan-progress";
@@ -215,11 +305,15 @@ export function reducer(state: State, action: Action): State {
         },
       };
 
-    case "scan-done":
+    case "scan-done": {
+      // Once images are recognized, ask how they should be written — once per session.
+      const ask = state.askImageOptions && !state.imageSetupShown && hasImageRows(action.model);
       return {
         ...state,
         view: "list",
-        overlay: null,
+        overlay: ask ? "image-setup" : null,
+        imageSetup: ask ? openImageSetup(state.imageOptions) : null,
+        imageSetupShown: state.imageSetupShown || ask,
         scan: null,
         model: action.model,
         files: action.files,
@@ -230,6 +324,89 @@ export function reducer(state: State, action: Action): State {
         run: null,
         cancelling: false,
         status: null,
+      };
+    }
+
+    case "image-setup-open":
+      return {
+        ...state,
+        overlay: "image-setup",
+        imageSetup: openImageSetup(state.imageOptions),
+        imageSetupShown: true,
+        input: "",
+        status: null,
+      };
+
+    case "image-setup-key": {
+      const setup = state.imageSetup;
+      if (!setup || setup.typing) return state;
+      const next = { ...setup };
+      const step = action.key === "left" ? -1 : action.key === "right" ? 1 : 0;
+      if (action.key === "up" || action.key === "down") {
+        const delta = action.key === "up" ? -1 : 1;
+        next.question = clamp(setup.question + delta, 0, SETUP_QUESTIONS - 1) as 0 | 1 | 2;
+      } else if (setup.question === 0) {
+        if (step !== 0) {
+          next.formatCursor = clamp(setup.formatCursor + step, 0, IMAGE_FORMAT_CHOICES.length - 1);
+        } else {
+          const format = IMAGE_FORMAT_CHOICES[setup.formatCursor]!;
+          const has = setup.formats.includes(format);
+          // At least one format: unticking the last one would leave nothing to write.
+          if (has && setup.formats.length === 1) {
+            return { ...state, status: "Keep at least one format." };
+          }
+          next.formats = has
+            ? setup.formats.filter((f) => f !== format)
+            : IMAGE_FORMAT_CHOICES.filter((f) => f === format || setup.formats.includes(f));
+        }
+      } else if (setup.question === 1) {
+        next.edge = clamp(setup.edge + step, 0, MAX_EDGE_CHOICES.length);
+      } else {
+        next.size = clamp(setup.size + step, 0, MAX_SIZE_CHOICES.length);
+      }
+      return { ...state, imageSetup: next, status: null };
+    }
+
+    case "image-setup-typing": {
+      if (!state.imageSetup) return state;
+      const setup = state.imageSetup;
+      const current = action.field === "maxEdge" ? setup.customEdge : setup.customSize;
+      const text =
+        current === null || action.field === null
+          ? ""
+          : action.field === "maxEdge"
+            ? String(current)
+            : `${Math.round(current / 1024)} KB`;
+      return {
+        ...state,
+        imageSetup: { ...setup, typing: action.field },
+        input: text,
+        status: null,
+      };
+    }
+
+    case "image-setup-custom": {
+      if (!state.imageSetup) return state;
+      const setup = state.imageSetup;
+      return {
+        ...state,
+        imageSetup:
+          action.field === "maxEdge"
+            ? { ...setup, customEdge: action.value, edge: MAX_EDGE_CHOICES.length, typing: null }
+            : { ...setup, customSize: action.value, size: MAX_SIZE_CHOICES.length, typing: null },
+        input: "",
+        status: null,
+      };
+    }
+
+    case "image-setup-applied":
+      return {
+        ...state,
+        imageOptions: action.options,
+        imagePresetSettings: action.settings,
+        imageSetup: null,
+        overlay: state.overlay === "image-setup" ? null : state.overlay,
+        input: "",
       };
 
     case "fatal":
@@ -380,6 +557,9 @@ export function reducer(state: State, action: Action): State {
           ? {
               presets: { ...state.baseline.presets, ...state.save.choices.presets },
               outDir: state.outDir,
+              imageOptions: state.save.choices.presetSettings
+                ? state.imageOptions
+                : state.baseline.imageOptions,
             }
           : state.baseline,
       };
@@ -406,7 +586,12 @@ export function reducer(state: State, action: Action): State {
       return state.view === "running" ? { ...state, cancelling: true } : state;
 
     case "back": {
-      if (state.overlay) return { ...state, overlay: null, input: "", status: null };
+      if (state.overlay === "image-setup" && state.imageSetup?.typing) {
+        return { ...state, imageSetup: { ...state.imageSetup, typing: null }, input: "" };
+      }
+      if (state.overlay) {
+        return { ...state, overlay: null, imageSetup: null, input: "", status: null };
+      }
       switch (state.view) {
         case "review":
           return { ...state, view: "list", review: null };

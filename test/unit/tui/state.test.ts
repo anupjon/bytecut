@@ -358,14 +358,17 @@ describe("saving choices", () => {
   });
 
   it("a choice already in the config is not offered again", () => {
-    const s = { ...withPreset(), baseline: { presets: { "a.jpg": "icon" }, outDir: "elsewhere" } };
+    const s = {
+      ...withPreset(),
+      baseline: { ...withPreset().baseline, presets: { "a.jpg": "icon" }, outDir: "elsewhere" },
+    };
     expect(unsavedChoices(s)).toEqual({});
   });
 
   it("changing a saved choice offers the new value", () => {
     const s = {
       ...withPreset(),
-      baseline: { presets: { "a.jpg": "hero" }, outDir: "elsewhere" },
+      baseline: { ...withPreset().baseline, presets: { "a.jpg": "hero" }, outDir: "elsewhere" },
     };
     expect(unsavedChoices(s)).toEqual({ presets: { "a.jpg": "icon" } });
   });

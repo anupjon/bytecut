@@ -388,6 +388,28 @@ result is cached.` Checked in a real pty on a 4K clip. The estimate is cached by
   the TUI video test now waits for the list row because the scanning screen names the file. The hook
   timeout is 120 s, since fixture generation in `beforeAll` could exceed 30 s under a full parallel run.
 
+## Image output questions in the TUI (change after M9)
+
+- **Request**: once the images are recognized, ask which formats to write, the max edge and a
+  target max size, each with ready-made choices and a custom value.
+- **TUI**: after the first scan that lists an image, an "Image output" panel opens: Formats
+  (JPEG / WebP / AVIF, at least one), Max edge (1280 / **1920** / 2560 / 3840 / custom px) and Max size
+  per file (**no cap** / 150 KB / 300 KB / 500 KB / 1 MB / custom, e.g. `250 KB`). It is pre-filled with
+  what the project resolves to, shown once per session, and reopened with `i` or `/images`. Enter
+  applies and rescans so the estimates follow; Esc keeps what was there.
+- **Scope**: `photo`, `hero` and config presets built on them; `icon` stays lossless PNG, and a
+  transparent or ambiguous source still gets PNG in place of JPEG. A cap turns on the perceptual
+  search at `ssimulacra2: 80`, `floor: 65` (a preset's own target and floor are kept).
+- **How**: `src/core/config/image-options.ts` turns the answers into ordinary preset definitions on
+  the raw config, which the session validates and resolves exactly like a file, so review, run,
+  `/save` and a later session all see the same presets. `/save` writes them to `presets.photo` /
+  `presets.hero` (only the fields that change). No format changes: no new config fields.
+- **Tests**: options → definitions (minimal, inherits, keeps the config's target, PNG kept, round
+  trip through a written config), reducer, panel walkthrough with a fake session, and a real session
+  that plans `-640.webp` / `-640.avif`, saves, and plans the same in a new session.
+- **Not done**: headless flags for the same three choices (use the config); the audit still
+  estimates a capped image at the preset's fixed quality.
+
 ## Video presets in the TUI, and a size cap for video (change after M9)
 
 - **Report**: `p` on a video row cycled photo / hero / icon, and there was no way to ask for a

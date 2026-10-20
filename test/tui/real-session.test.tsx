@@ -10,6 +10,8 @@ import { sha256 } from "../../src/core/hash.js";
 import { parseManifest } from "../../src/core/manifest/io.js";
 import { optimize } from "../../src/core/commands/optimize.js";
 import { createSession } from "../../src/tui/session.js";
+import { loadConfig } from "../../src/core/config/load.js";
+import { resolveConfig } from "../../src/core/config/resolve.js";
 import { createFfmpegVideoEngine } from "../../src/core/video/ffmpeg-engine.js";
 import { isFile, run as runBinary } from "../../src/cli/system.js";
 import { hashAll, listFiles, tempDir } from "../helpers.js";
@@ -217,6 +219,68 @@ const App3 = App;
 
 const FFMPEG = await hasFfmpeg();
 if (!FFMPEG) console.warn("[bytecut tests] ffmpeg not found: skipping TUI video tests.");
+
+describe("image output options against the real session", () => {
+  it("plans the chosen formats and edge, and saves them so the next session plans the same", async () => {
+    const root = await nextProject(1);
+    const session = sessionFor(root, sharpImageEngine);
+    expect(session.imageOptions()).toEqual({ formats: ["jpg"], maxEdge: 1920, maxSize: null });
+
+    const options = {
+      formats: ["webp", "avif"] as Array<"webp" | "avif">,
+      maxEdge: 640,
+      maxSize: null,
+    };
+    const settings = await session.setImageOptions(options);
+    expect(settings).toEqual({
+      photo: { formats: ["webp", "avif"], maxEdge: 640 },
+      hero: { formats: ["webp", "avif"], maxEdge: 640 },
+    });
+    const review = await session.review(["public/img/p0.jpg"], {}, OUT);
+    const outputs = review.plan.items[0]!.outputs.map((o) => o.path);
+    expect(outputs).toEqual(["img/p0-640.webp", "img/p0-640.avif"]);
+
+    const saved = await session.saveChoices({ presetSettings: settings });
+    expect(saved).toMatchObject({ kind: "written", file: "bytecut.config.json" });
+    const written = JSON.parse(await readFile(join(root, "bytecut.config.json"), "utf8"));
+    expect(written.presets.photo).toEqual({ formats: ["webp", "avif"], maxEdge: 640 });
+
+    const config = await resolveConfig(root, await loadConfig(root));
+    const fresh = createSession({
+      projectRoot: root,
+      engine: sharpImageEngine,
+      svgEngine: svgoEngine,
+      project: config.project,
+      config,
+      inputs: ["public"],
+      toolVersion: "test",
+      ffmpeg: { found: true, installHint: "" },
+    });
+    expect(fresh.imageOptions()).toEqual(options);
+    expect((await fresh.review(["public/img/p0.jpg"], {}, OUT)).plan).toEqual(review.plan);
+  });
+
+  it("a size cap plans a quality search", async () => {
+    const root = await nextProject(1);
+    const session = sessionFor(root, sharpImageEngine);
+    await session.setImageOptions({ formats: ["webp"], maxEdge: 1920, maxSize: 40 * 1024 });
+    const review = await session.review(["public/img/p0.jpg"], {}, OUT);
+    expect(review.plan.items[0]!.outputs[0]!.search).toMatchObject({
+      target: 80,
+      floor: 65,
+      maxBytes: 40 * 1024,
+    });
+  });
+
+  it("rejects an empty format list and keeps what it had", async () => {
+    const root = await nextProject(1);
+    const session = sessionFor(root, sharpImageEngine);
+    await expect(
+      session.setImageOptions({ formats: [], maxEdge: 1920, maxSize: null }),
+    ).rejects.toThrow();
+    expect(session.imageOptions()).toEqual({ formats: ["jpg"], maxEdge: 1920, maxSize: null });
+  });
+});
 
 describe.skipIf(!FFMPEG)("TUI with a real video", () => {
   it("lists a video, plans it, and writes AV1 + H.264 + poster", async () => {

@@ -7,6 +7,11 @@ import type { CopyResult } from "../../src/tui/clipboard.js";
 import type { Review } from "../../src/tui/state.js";
 import type { Session } from "../../src/tui/session.js";
 import type { RunResult } from "../../src/core/execute/run.js";
+import {
+  IMAGE_OPTION_DEFAULTS,
+  sameImageOptions,
+  type ImageOptions,
+} from "../../src/core/config/image-options.js";
 
 export const KEY = {
   enter: "\r",
@@ -72,7 +77,9 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
     snippet: [] as string[],
     compare: [] as string[],
     save: [] as Array<Parameters<Session["saveChoices"]>[0]>,
+    imageOptions: [] as ImageOptions[],
   };
+  let imageOptions: ImageOptions = { ...IMAGE_OPTION_DEFAULTS };
   const m = over.model ?? model([row("a.jpg"), row("b.jpg"), row("c.jpg", { severity: "info" })]);
   const session: Session = {
     async scan() {
@@ -112,6 +119,16 @@ export function fakeSession(over: Partial<Session> & { model?: Model } = {}) {
       calls.save.push(choices);
       return { kind: "written", file: "bytecut.config.json", created: true };
     },
+    imageOptions() {
+      return imageOptions;
+    },
+    async setImageOptions(options): Promise<Record<string, Record<string, unknown>>> {
+      calls.imageOptions.push(options);
+      imageOptions = options;
+      return sameImageOptions(options, IMAGE_OPTION_DEFAULTS)
+        ? {}
+        : { photo: { formats: options.formats, maxEdge: options.maxEdge } };
+    },
     async snippet(source) {
       calls.snippet.push(source);
       return {
@@ -130,9 +147,12 @@ export function mount(
   session: Session,
   node?: (props: Parameters<typeof App>[0]) => ReactElement,
   copy?: (text: string) => Promise<CopyResult>,
+  /** The image output panel is off unless a test is about it, so lists show straight away. */
+  askImageOptions = false,
 ) {
   const props = {
     ...(copy ? { copy } : {}),
+    askImageOptions,
     session,
     project,
     projectRoot: "/p",

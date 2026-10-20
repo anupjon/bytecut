@@ -30,6 +30,12 @@ import {
   renderConfig,
 } from "../core/config/choices.js";
 import type { Choices } from "../core/config/choices.js";
+import {
+  applyImageOptions,
+  changedPresets,
+  currentImageOptions,
+  type ImageOptions,
+} from "../core/config/image-options.js";
 import { loadConfig } from "../core/config/load.js";
 import { resolveConfig, resolveConfigData, type ResolvedConfig } from "../core/config/resolve.js";
 import { parseConfig } from "../core/config/schema.js";
@@ -106,13 +112,43 @@ export interface Session {
   saveChoices(choices: Choices): Promise<SaveOutcome>;
   /** Null when `outDir` is acceptable, otherwise the reason it is not (§6.5). */
   validateOutDir(outDir: string, sources: string[]): Promise<string | null>;
+  /** The image output options the project resolves to now (formats, max edge, max size). */
+  imageOptions(): ImageOptions;
+  /**
+   * Uses `options` for the lossy image presets from the next scan, review or run on. Returns
+   * the preset definitions that would make them permanent (only the ones that change).
+   */
+  setImageOptions(options: ImageOptions): Promise<Record<string, Record<string, unknown>>>;
 }
 
 export function createSession(options: SessionOptions): Session {
   const { projectRoot, engine } = options;
   const compareServers: CompareServer[] = [];
-  // Replaced after a save, so the next scan sees what was just written.
-  let config = options.config ?? resolveConfigData({}, options.project, null);
+  // The project's config as written; replaced after a save, so the next scan sees it.
+  let base = options.config ?? resolveConfigData({}, options.project, null);
+  // `base` with this session's image options applied; what every command runs with.
+  let config = base;
+  let imageOptions: ImageOptions | null = null;
+
+  /** Applies `imageOptions` to `base` through the same validation a config file gets. */
+  function rebuild(): Record<string, Record<string, unknown>> {
+    if (!imageOptions) {
+      config = base;
+      return {};
+    }
+    const raw: Record<string, unknown> =
+      typeof base.loaded?.raw === "object" && base.loaded.raw !== null
+        ? (base.loaded.raw as Record<string, unknown>)
+        : {};
+    const presets = applyImageOptions(raw.presets, base.catalog, imageOptions);
+    const next = { ...raw, ...(Object.keys(presets).length > 0 ? { presets } : {}) };
+    config = resolveConfigData(
+      parseConfig(next, base.loaded?.name ?? "image options"),
+      base.project,
+      base.loaded,
+    );
+    return changedPresets(raw.presets, presets) as Record<string, Record<string, unknown>>;
+  }
   const common = (outDir: string) => ({
     projectRoot,
     engine,
@@ -288,10 +324,27 @@ export function createSession(options: SessionOptions): Session {
         // Never write something the loader would then refuse.
         parseConfig(next, file);
         await writeConfigFile(projectRoot, file, renderConfig("json", next));
-        config = await resolveConfig(projectRoot, await loadConfig(projectRoot));
+        base = await resolveConfig(projectRoot, await loadConfig(projectRoot));
+        rebuild();
         return { kind: "written", file, created: loaded === null };
       } catch (error) {
         return { kind: "error", message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+
+    imageOptions() {
+      return imageOptions ?? currentImageOptions(config.catalog);
+    },
+
+    async setImageOptions(next) {
+      const previous = imageOptions;
+      imageOptions = next;
+      try {
+        return rebuild();
+      } catch (error) {
+        imageOptions = previous;
+        rebuild();
+        throw error;
       }
     },
 

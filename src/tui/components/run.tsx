@@ -152,6 +152,16 @@ export function SnippetOverlay(props: { snippet: SnippetView }): ReactNode {
   );
 }
 
+/** `formats jpg, webp · maxEdge 1280 · maxSize 150 KB`: the image fields a save writes. */
+function describeSettings(def: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (Array.isArray(def.formats)) parts.push(`formats ${def.formats.join(", ")}`);
+  if (def.maxEdge !== undefined) parts.push(`maxEdge ${String(def.maxEdge)}`);
+  if (def.maxSize !== undefined) parts.push(`maxSize ${String(def.maxSize)}`);
+  else if (!("maxSize" in def) && def.ssimulacra2 === undefined) parts.push("no size cap");
+  return parts.join(" · ");
+}
+
 export function SaveOverlay(props: { save: SaveView; outDir: string }): ReactNode {
   const { save } = props;
   const { choices, outcome } = save;
@@ -167,6 +177,11 @@ export function SaveOverlay(props: { save: SaveView; outDir: string }): ReactNod
         ))}
         {entries.length > 10 ? <Text dimColor>… and {entries.length - 10} more</Text> : null}
         {choices.outDir !== undefined ? <Text>output folder → {choices.outDir}</Text> : null}
+        {Object.entries(choices.presetSettings ?? {}).map(([name, def]) => (
+          <Text key={`preset:${name}`} wrap="truncate-end">
+            preset {name} → {describeSettings(def)}
+          </Text>
+        ))}
       </Box>
       <Box flexDirection="column" marginTop={1}>
         {outcome === null ? (

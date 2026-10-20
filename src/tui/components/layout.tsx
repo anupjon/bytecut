@@ -24,7 +24,7 @@ export function Header(props: { framework: string; scanning: string; outDir: str
 }
 
 const HINTS: Record<string, string> = {
-  list: "↑↓ move · space select · p preset · d details · o out dir · enter review · / cmds · ? help",
+  list: "↑↓ move · space select · p preset · i image output · d details · o out dir · enter review · / cmds · ? help",
   review: "enter run · esc back",
   running: "esc cancel",
   done: "↑↓ select · c copy markup · s save choices · enter/esc back · q quit",
@@ -57,10 +57,11 @@ export function Help(): ReactNode {
       <Text>↑/↓ or k/j move · space toggle · a select all/none</Text>
       <Text>enter review the plan, then run it · esc go back / cancel a run</Text>
       <Text>p cycle preset for the highlighted file · o change output folder</Text>
+      <Text>i image output: formats, max edge, max size per file</Text>
       <Text>d details · / command bar · @ jump to a file · ? this help · q quit</Text>
       <Text bold>Commands</Text>
       <Text>
-        /audit /optimize [@file…] /preset {"<name>"} [@file…] /out {"<dir>"}
+        /audit /optimize [@file…] /preset {"<name>"} [@file…] /images /out {"<dir>"}
       </Text>
       <Text>/select all|none|warn /snippet @file /compare @file /save /doctor /help /quit</Text>
       <Text dimColor>esc closes this</Text>

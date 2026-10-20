@@ -10,13 +10,30 @@ import {
 } from "react";
 import type { ProjectInfo } from "../core/scan/detect.js";
 import { completeMention, fuzzyFiles, parseCommand } from "./commands.js";
+import { isEmpty } from "../core/config/choices.js";
+import {
+  MAX_EDGE_CHOICES,
+  MAX_SIZE_CHOICES,
+  parseMaxEdge,
+  parseMaxSize,
+  sameImageOptions,
+} from "../core/config/image-options.js";
 import { copyToClipboard, systemClipboardDeps, type CopyResult } from "./clipboard.js";
 import { CommandBar, computeSuggestions } from "./components/commandbar.js";
 import { Header, Help, StatusLine } from "./components/layout.js";
+import { ImageSetupPanel } from "./components/image-setup.js";
 import { Details, FileList, ReportOnly } from "./components/list.js";
 import { DoneView, ReviewView, RunView, SaveOverlay, SnippetOverlay } from "./components/run.js";
 import { displayOutDir, type Session } from "./session.js";
-import { initialState, reducer, rowAt, unsavedChoices, type State } from "./state.js";
+import {
+  hasImageRows,
+  initialState,
+  reducer,
+  rowAt,
+  setupOptions,
+  unsavedChoices,
+  type State,
+} from "./state.js";
 
 const FRAMEWORK_NAMES: Record<string, string> = {
   next: "Next.js",
@@ -38,6 +55,8 @@ export interface AppProps {
   presetNames?: string[];
   /** Video presets, for rows that are videos or animated GIFs. */
   videoPresetNames?: string[];
+  /** Opens the "Image output" questions after the first scan that finds images (default true). */
+  askImageOptions?: boolean;
   /** Puts text on the clipboard. Injectable so tests never touch the real one. */
   copy?: (text: string) => Promise<CopyResult>;
 }
@@ -47,7 +66,10 @@ export function App(props: AppProps): ReactNode {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [state, dispatch] = useReducer(reducer, props.outDir, (outDir: string) =>
-    initialState(outDir, props.presetNames, props.videoPresetNames),
+    initialState(outDir, props.presetNames, props.videoPresetNames, {
+      options: session.imageOptions(),
+      ask: props.askImageOptions ?? true,
+    }),
   );
   const [doctor, setDoctor] = useState<string | null>(null);
 
@@ -144,7 +166,7 @@ export function App(props: AppProps): ReactNode {
       const unsaved = unsavedChoices(stateRef.current);
       if (
         !result.cancelled &&
-        (unsaved.outDir !== undefined || unsaved.presets !== undefined) &&
+        !isEmpty(unsaved) &&
         JSON.stringify(unsaved) !== declinedRef.current
       ) {
         dispatch({ type: "save-open", choices: unsaved });
@@ -180,6 +202,36 @@ export function App(props: AppProps): ReactNode {
     [session, projectRoot],
   );
 
+  /** Applies the panel's answers; a change rescans, so the estimates follow them. */
+  const applyImageSetup = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.imageSetup) return;
+    const chosen = setupOptions(s.imageSetup);
+    if (typeof chosen === "string") {
+      // "Custom" is highlighted with nothing typed yet: ask for it instead of applying.
+      dispatch({ type: "image-setup-typing", field: chosen });
+      return;
+    }
+    try {
+      const settings = await session.setImageOptions(chosen);
+      dispatch({ type: "image-setup-applied", options: chosen, settings });
+      if (!sameImageOptions(chosen, s.imageOptions)) dispatch({ type: "rescan" });
+    } catch (error) {
+      dispatch({
+        type: "status",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [session]);
+
+  const setCustomValue = useCallback((text: string) => {
+    const field = stateRef.current.imageSetup?.typing;
+    if (!field) return;
+    const value = field === "maxEdge" ? parseMaxEdge(text) : parseMaxSize(text);
+    if (typeof value === "string") dispatch({ type: "status", message: value });
+    else dispatch({ type: "image-setup-custom", field, value });
+  }, []);
+
   const resolveMentions = useCallback((mentions: string[]): string[] => {
     const known = stateRef.current.model.rows.map((r) => r.source);
     const out: string[] = [];
@@ -213,7 +265,7 @@ export function App(props: AppProps): ReactNode {
 
   const askToSave = useCallback(() => {
     const unsaved = unsavedChoices(stateRef.current);
-    if (unsaved.outDir === undefined && unsaved.presets === undefined) {
+    if (isEmpty(unsaved)) {
       dispatch({
         type: "status",
         message: "Nothing to save: no choice differs from the project config.",
@@ -285,6 +337,10 @@ export function App(props: AppProps): ReactNode {
         }
         case "save":
           askToSave();
+          return;
+        case "images":
+          if (hasImageRows(s.model)) dispatch({ type: "image-setup-open" });
+          else dispatch({ type: "status", message: "No images to optimize in the list." });
           return;
         case "out":
           if (parsed.args[0]) await applyOutDir(parsed.args[0]);
@@ -372,6 +428,12 @@ export function App(props: AppProps): ReactNode {
     if (chunk !== null) {
       const submit = /[\r\n]$/.test(chunk);
       const text = clean(chunk);
+      if (s.overlay === "image-setup" && s.imageSetup?.typing) {
+        const next = s.input + text;
+        dispatch({ type: "input", text: next });
+        if (submit) setCustomValue(next);
+        return;
+      }
       if (s.overlay === "command" || s.overlay === "outdir") {
         const next = s.input + text;
         dispatch({ type: "input", text: next });
@@ -429,6 +491,38 @@ export function App(props: AppProps): ReactNode {
       return;
     }
 
+    if (s.overlay === "image-setup" && s.imageSetup) {
+      const setup = s.imageSetup;
+      if (setup.typing) {
+        if (key.escape) dispatch({ type: "back" });
+        else if (key.return) setCustomValue(s.input);
+        else if (key.backspace || key.delete) {
+          dispatch({ type: "input", text: s.input.slice(0, -1) });
+        } else if (input && !key.ctrl && !key.meta) {
+          // eslint-disable-next-line no-control-regex
+          dispatch({ type: "input", text: s.input + input.replace(/[\u0000-\u001f\u007f]/g, "") });
+        }
+        return;
+      }
+      const onCustom =
+        (setup.question === 1 && setup.edge === MAX_EDGE_CHOICES.length) ||
+        (setup.question === 2 && setup.size === MAX_SIZE_CHOICES.length);
+      if (key.escape) dispatch({ type: "back" });
+      else if (key.upArrow || input === "k") dispatch({ type: "image-setup-key", key: "up" });
+      else if (key.downArrow || input === "j") dispatch({ type: "image-setup-key", key: "down" });
+      else if (key.leftArrow || input === "h") dispatch({ type: "image-setup-key", key: "left" });
+      else if (key.rightArrow || input === "l") dispatch({ type: "image-setup-key", key: "right" });
+      else if (input === " ") {
+        if (onCustom) {
+          dispatch({
+            type: "image-setup-typing",
+            field: setup.question === 1 ? "maxEdge" : "maxSize",
+          });
+        } else if (setup.question === 0) dispatch({ type: "image-setup-key", key: "toggle" });
+      } else if (key.return) void applyImageSetup();
+      return;
+    }
+
     if (s.overlay === "snippet") {
       if (input === "c" && s.snippet) {
         void copy(s.snippet.code).then((r) =>
@@ -471,7 +565,9 @@ export function App(props: AppProps): ReactNode {
         else if (input === " ") dispatch({ type: "toggle" });
         else if (input === "a") dispatch({ type: "toggle-all" });
         else if (input === "p") dispatch({ type: "cycle-preset" });
-        else if (input === "d") {
+        else if (input === "i") {
+          if (hasImageRows(s.model)) dispatch({ type: "image-setup-open" });
+        } else if (input === "d") {
           if (rowAt(s)) dispatch({ type: "overlay", overlay: "details" });
         } else if (input === "o") dispatch({ type: "overlay", overlay: "outdir", input: s.outDir });
         else if (input === "?") dispatch({ type: "overlay", overlay: "help" });
@@ -547,6 +643,8 @@ export function App(props: AppProps): ReactNode {
       ) : (
         <SaveOverlay save={state.save} outDir={state.outDir} />
       );
+  } else if (state.overlay === "image-setup" && state.imageSetup) {
+    body = <ImageSetupPanel setup={state.imageSetup} input={state.input} />;
   } else if (state.overlay === "snippet" && state.snippet) {
     body = <SnippetOverlay snippet={state.snippet} />;
   } else if (state.view === "done") {

@@ -29,7 +29,12 @@ export const COMMANDS: CommandInfo[] = [
   {
     name: "save",
     usage: "/save",
-    description: "Keep this session's preset and folder choices in the project config",
+    description: "Keep this session's preset, image and folder choices in the project config",
+  },
+  {
+    name: "images",
+    usage: "/images",
+    description: "Choose image formats, max edge and max size per file",
   },
   { name: "out", usage: "/out <dir>", description: "Change the output folder" },
   { name: "select", usage: "/select <all|none|warn>", description: "Change the selection" },
